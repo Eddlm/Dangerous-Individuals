@@ -78,6 +78,11 @@ namespace LSPDispatch
         ATTEMPTS_TASING,
     }
 
+    public enum DriveMode
+    {
+
+        ROAD, ALLEY, DIRTROAD, OFFROAD, LOCAL_PATHING
+    }
 
     public static class Info
     {
@@ -518,7 +523,6 @@ namespace LSPDispatch
                         {
                             Ped = LSPDModels;
                             Vehicle = LSPDCars;
-
                         }
                         if (MapArea == "countryside")
                         {

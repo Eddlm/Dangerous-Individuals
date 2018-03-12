@@ -177,7 +177,7 @@ namespace LSPDispatch
         public static List<string> HighTierCrimes = new List<string> { "", "", "", "", "", "", };
         public static int TickRefTime = Game.GameTime;
         public static int AutoDispatchRefTime = Game.GameTime;
-
+        public static int TickRefTimeLong = Game.GameTime;
         public static string LayoutFile = "Scripts/DangerousIndividuals/RacerLayouts.xml";
         public static string ConfigFilename = "Scripts/DangerousIndividuals/Config.xml";
         public static string CriminalVehicleFile = "Scripts/DangerousIndividuals/CriminalVehicles.xml";
@@ -242,6 +242,9 @@ namespace LSPDispatch
 
         private UIMenuItem UISpawnLocalSWAT = new UIMenuItem("Local SWAT", "Granger with 4 SWAT units.");
         private UIMenuItem UISpawnSWAT = new UIMenuItem("SWAT", "Riot with 8 SWAT units.");
+        private UIMenuItem UISpawnTransport = new UIMenuItem("Prisoner Transport", "Prisoner van.");
+
+
         private UIMenuItem UISpawnNOoSEHeli = new UIMenuItem("NOoSE Air Unit", "Armed Annihilator with four shooting SWAT units that will shoot the suspect from it.");
         private UIMenuItem UISpawnArmoredSWAT = new UIMenuItem("Insurgent SWAT", "An armored Insurgent, SWAT variant. 6 SWAT units."); //RDE
 
@@ -366,6 +369,7 @@ namespace LSPDispatch
                 //State Patrol (Highways) -  Simplified to a single model list from Los Santos
                 foreach (XmlElement element in originalXml.SelectNodes("//StatePatrol/LosSantosCity/VehicleSet/Vehicles/*")) if (new Model(element.InnerText).IsValid) Info.AddModelToList(element.InnerText, Info.HighwayCars);
                 foreach (XmlElement element in originalXml.SelectNodes("//StatePatrol/LosSantosCity/VehicleSet/Peds/*")) if (new Model(element.InnerText).IsValid) Info.AddModelToList(element.InnerText, Info.HighwayModels);
+
 
 
                 //Local LSSD (Sheriff)
@@ -1052,6 +1056,7 @@ namespace LSPDispatch
             PoliceSpawnMenu.AddItem(UISpawnLSPDCar);
             PoliceSpawnMenu.AddItem(UISpawnBike);
             PoliceSpawnMenu.AddItem(UISpawnHeli);
+            PoliceSpawnMenu.AddItem(UISpawnTransport);
 
 
             mainMenu.AddItem(NooseSpawnMenuItem);
@@ -1274,40 +1279,70 @@ namespace LSPDispatch
             if (CriminalsActive.Count > 0)
             {
 
-                if (selectedItem == UISelectCriminal || sender == UICopsChasingSelectedCriminalMenu)
+                if (selectedItem == UISelectCriminal)
                 {
+
+                    RefreshBackupList();
+                    /*
                     for (int i = 0; i < UICopsChasingSelectedCriminalMenu.MenuItems.Count; i++)
                     {
-                        UICopsChasingSelectedCriminalMenu.RemoveItemAt(0);
                         UICopsChasingSelectedCriminalMenu.Clear();
-                    }
+                    }*/
 
-                    
-                    //UICopsChasingSelectedCriminalMenu.AddItem(new UIMenuColoredItem("Status: " + CriminalsActive[UISelectCriminal.Index].State.ToString(), Color.SteelBlue, Color.SteelBlue));
-                    //UICopsChasingSelectedCriminalMenu.AddItem(new UIMenuColoredItem("Headed " + Util.GetWhereIsHeaded(CriminalsActive[UISelectCriminal.Index].Criminal, false), Color.SteelBlue, Color.SteelBlue));
-                    //UICopsChasingSelectedCriminalMenu.AddItem(new UIMenuColoredItem("Last Seen: " + World.GetStreetName(CriminalsActive[UISelectCriminal.Index].Criminal.Position), Color.SteelBlue, Color.SteelBlue));
-
+                    /*
+                    UICopsChasingSelectedCriminalMenu.Clear();
                     foreach (string text in GetCopschasingIt(CriminalsActive[UISelectCriminal.Index]))
                     {
                         UICopsChasingSelectedCriminalMenu.AddItem(new UIMenuItem(text));
                     }
+                    */
+                    //UICopsChasingSelectedCriminalMenu.AddItem(new UIMenuColoredItem("Status: " + CriminalsActive[UISelectCriminal.Index].State.ToString(), Color.SteelBlue, Color.SteelBlue));
+                    //UICopsChasingSelectedCriminalMenu.AddItem(new UIMenuColoredItem("Headed " + Util.GetWhereIsHeaded(CriminalsActive[UISelectCriminal.Index].Criminal, false), Color.SteelBlue, Color.SteelBlue));
+                    //UICopsChasingSelectedCriminalMenu.AddItem(new UIMenuColoredItem("Last Seen: " + World.GetStreetName(CriminalsActive[UISelectCriminal.Index].Criminal.Position), Color.SteelBlue, Color.SteelBlue));
+
+
                 }
 
                 if (sender == UICopsChasingSelectedCriminalMenu && UICopsChasingSelectedCriminalMenu.MenuItems.Count > 0)
                 {
-                    int correctedindex=index-0;
-                    //UI.Notify("Index: " + correctedindex + " | Cops: " + CriminalsActive[UISelectCriminal.Index].CopsChasingMe.Count);
-
-                    if (CriminalsActive[UISelectCriminal.Index].CopsChasingMe.Count-1 == correctedindex)
+                    SuspectHandler criminal = CriminalsActive[UISelectCriminal.Index];     
+                    if(criminal.CopsChasingMe.Count != UICopsChasingSelectedCriminalMenu.MenuItems.Count)
                     {
-                       if(DebugNotifications.Checked) UI.Notify("Index: " + correctedindex + " | Cop: " + CriminalsActive[UISelectCriminal.Index].CopsChasingMe[correctedindex].CopVehicle.FriendlyName);
-                        //Util.AddNotification("web_lossantospolicedept", "~b~" + CopsChasing[correctedindex].CopVehicle.FriendlyName + " unit", "Unit Dismissed", "I'm no longer required.");
-                        CriminalsActive[UISelectCriminal.Index].CopsChasingMe[correctedindex].ShouldRemoveCopUnit = true;
+                        UI.Notify("~o~Item mismatch, please go back and open this menu again.");
+                        return;
+                    }
+                    CopUnitHandler cop = criminal.CopsChasingMe[index];
+
+
+                    if (selectedItem.Enabled)
+                    {
+                        cop.ShouldRemoveCopUnit = true;
+                        selectedItem.Text += " - Dismissed";
+                        selectedItem.Enabled = false;
                     }
                     else
                     {
-                        //UI.Notify("Error: no cop found here.");
+                        UI.Notify("Item already dismissed");
                     }
+
+                 // RefreshBackupList();
+
+                    /*
+                    selectedItem.Enabled = false;
+
+                        selectedItem.Text = "Dismised";
+                        UI.Notify("Index: " + index + " | Cops: " + CriminalsActive[UISelectCriminal.Index].CopsChasingMe.Count);
+
+                         Script.Wait(1000);
+
+
+                        if (index < CriminalsActive[UISelectCriminal.Index].CopsChasingMe.Count - 1)
+                    {
+                        CriminalsActive[UISelectCriminal.Index].CopsChasingMe[index].ShouldRemoveCopUnit = true;
+                    }
+                        
+
+                    */
 
                     /*
                     if (CopsChasing.Count <= correctedindex)
@@ -1320,6 +1355,8 @@ namespace LSPDispatch
                         UICopsChasingSelectedCriminalMenu.RemoveItemAt(index);
                     }
                     */
+
+                    return;
                 }
 
 
@@ -1360,6 +1397,10 @@ namespace LSPDispatch
                 {
                     if (CriminalsActive.Count > 0) CopsChasing.Add(new CopUnitHandler(CopUnitType.LocalNoose, CriminalsActive[UISelectCriminal.Index], Info.GetSpawnpointFor(CopUnitType.LocalNoose, desiredPosition), true));
                 }
+                if (selectedItem == UISpawnTransport)
+                {
+                    if (CriminalsActive.Count > 0) CopsChasing.Add(new CopUnitHandler(CopUnitType.PrisonerTransporter, CriminalsActive[UISelectCriminal.Index], Info.GetSpawnpointFor(CopUnitType.PrisonerTransporter, desiredPosition), true));
+                }
                 if (selectedItem == UISpawnArmoredSWAT)
                 {
                     if (CriminalsActive.Count > 0) CopsChasing.Add(new CopUnitHandler(CopUnitType.InsurgentNoose, CriminalsActive[UISelectCriminal.Index], Info.GetSpawnpointFor(CopUnitType.InsurgentNoose, desiredPosition), true));
@@ -1395,11 +1436,42 @@ namespace LSPDispatch
             CopschasingThatCriminal.Clear();
             foreach (CopUnitHandler unit in CopsChasing)
             {
-                if (unit.Suspect == Suspect) { CopList.Add(unit.CopVehicle.FriendlyName + " Unit"); CopschasingThatCriminal.Add(unit.CopVehicle.FriendlyName + " Unit"); }
+                if (unit.Suspect == Suspect)
+                {
+
+                    string t = unit.CopVehicle.FriendlyName + " Unit";
+
+                    if (unit.ShouldRemoveCopUnit) t += " - Dismissed";
+                    CopList.Add(t);
+                    CopschasingThatCriminal.Add(t);
+                }
             }
             return CopList;
         }
+        void RefreshBackupList()
+        {
+            /*
+            for (int i = 0; i < UICopsChasingSelectedCriminalMenu.MenuItems.Count; i++)
+            {
+                UICopsChasingSelectedCriminalMenu.RemoveItemAt(0);
 
+            }
+            */
+            UICopsChasingSelectedCriminalMenu.Clear();
+
+            //UICopsChasingSelectedCriminalMenu.AddItem(new UIMenuColoredItem("Status: " + CriminalsActive[UISelectCriminal.Index].State.ToString(), Color.SteelBlue, Color.SteelBlue));
+            //UICopsChasingSelectedCriminalMenu.AddItem(new UIMenuColoredItem("Headed " + Util.GetWhereIsHeaded(CriminalsActive[UISelectCriminal.Index].Criminal, false), Color.SteelBlue, Color.SteelBlue));
+            //UICopsChasingSelectedCriminalMenu.AddItem(new UIMenuColoredItem("Last Seen: " + World.GetStreetName(CriminalsActive[UISelectCriminal.Index].Criminal.Position), Color.SteelBlue, Color.SteelBlue));
+
+            foreach (string text in GetCopschasingIt(CriminalsActive[UISelectCriminal.Index]))
+            {
+
+                UIMenuItem d= new UIMenuItem(text);
+                //if (text.Contains("Dismissed")) d.Enabled = false;
+                UICopsChasingSelectedCriminalMenu.AddItem(new UIMenuItem(text));
+
+            }
+        }
         static public int NumberOfUnitsDispatched(CopUnitType type)
         {
             int Number = 0;
@@ -1558,7 +1630,48 @@ namespace LSPDispatch
         void OnTick(object sender, EventArgs e)
         {
 
-            
+         //   Vehicle dsdas = Util.GetVehicleInDirection(Game.Player.Character.CurrentVehicle, Game.Player.Character.CurrentVehicle.ForwardVector * -10);
+
+
+           // UI.ShowSubtitle(Util.CanWeUse(dsdas).ToString());
+            if (WasCheatStringJustEntered("even")) UI.ShowSubtitle("~r~"+Util.TerrainIsEven(Game.Player.Character.Position,float.Parse(Game.GetUserInput(2))).ToString());
+            if (WasCheatStringJustEntered("sound"))
+            {
+
+                Vehicle v = Game.Player.Character.CurrentVehicle;
+
+                if (Util.CanWeUse(v))
+                {
+                    string name = Game.GetUserInput(10);
+                    Model modelname = name;
+                    if(modelname.IsValid)
+                    {
+                        Function.Call<Vector3>(Hash._0x4F0C413926060B38, v, name);
+                        UI.Notify("~b~" + name + " sound applied on " + v.FriendlyName + ".");
+                    }
+                    else
+                    {
+                        UI.Notify("~o~" + name + " is not a valid vehicle.");
+
+                    }
+
+                }
+                else
+                {
+                    UI.Notify("~o~Do it in a car.");
+                }
+            }
+            if (WasCheatStringJustEntered("di clear"))
+            {
+                UI.Notify("All cops and criminals clear.");
+                //Clear criminals and cops;
+                foreach (CopUnitHandler unit in CopsChasing) unit.ShouldRemoveCopUnit = true;
+                foreach (SuspectHandler unit in CriminalsActive) unit.ShouldRemoveCriminal = true;
+            }
+            if (WasCheatStringJustEntered("check"))
+            {
+               Util.SetUpCopUnitLoadout(null, Game.Player.Character.Position);
+            }
             ////File.AppendAllText(@"" + debugpath, "\n");
 
             ////File.AppendAllText(@"" + debugpath, "\n - ontick");
@@ -1665,18 +1778,8 @@ namespace LSPDispatch
                     }
                 }
             }
+            
 
-            //Ambient criminals dynamically added
-            if (Info.IsPlayerOnDuty() && AmbientPedsCanBeCriminals.Checked)
-            {
-                foreach (Ped ped in World.GetNearbyPeds(Game.Player.Character, 50f))
-                {
-                    if (ped.IsOnFoot && !Util.IsCop(ped) && !ped.IsPersistent && Util.IsSubttaskActive(ped,Util.Subtask.AIMED_SHOOTING_ON_FOOT))
-                    {
-                        CriminalsActive.Add(new SuspectHandler(CriminalType.Dynamic, ped.Position, ped));
-                    }
-                }
-            }
 
             if (CloseRoads.Checked && CriminalsActive.Count == 0) CloseRoads.Checked = false;
 
@@ -1710,6 +1813,9 @@ namespace LSPDispatch
 
                 TickRefTime = Game.GameTime + 1000;
 
+
+
+
                 if (AutomaticCallouts.Checked && CalloutNotification == -1 && CriminalsActive.Count == 0 && Info.IsPlayerOnDuty() && Game.Player.Character.IsStopped && !_menuPool.IsAnyMenuOpen() && Util.RandomInt(0, 10) < 2) GenerateCallout();
                 if (Info.IsPlayerOnDuty())
                 {
@@ -1736,6 +1842,30 @@ namespace LSPDispatch
                     if (Suspect.Surrendered()) CriminalsSurrendered.Add(Suspect); else CriminalsFleeing.Add(Suspect);
                     if (Suspect.CopsChasingMe.Count == 0) CriminalsAlone.Add(Suspect);
                 }
+
+
+
+                if (SplitCriminals.Count > 0)
+                {
+                    if (Util.CanWeUse(SplitCriminals[0]))
+                    {
+                        if (SplitCriminals[0].IsAlive)
+                        {
+                            CriminalsActive.Add(new SuspectHandler(SplitCriminalKind, Vector3.Zero, SplitCriminals[0]));
+                            SplitCriminals.RemoveAt(0);
+                        }
+                        else
+                        {
+                            SplitCriminals[0].MarkAsNoLongerNeeded();
+                        }
+                    }
+                }
+
+
+                Util.HandleMessages();
+                Util.HandleNotifications();
+
+
             }
 
 
@@ -1758,28 +1888,10 @@ namespace LSPDispatch
 
             }
 
-            if (SplitCriminals.Count > 0)
-            {
-                if (Util.CanWeUse(SplitCriminals[0]))
-                {
-                    if (SplitCriminals[0].IsAlive)
-                    {
-                        CriminalsActive.Add(new SuspectHandler(SplitCriminalKind, Vector3.Zero, SplitCriminals[0]));
-                        SplitCriminals.RemoveAt(0);
-                    }
-                    else
-                    {
-                        SplitCriminals[0].MarkAsNoLongerNeeded();
-                    }
-                }
 
-            }
 
             //if (Game.Player.Character.Weapons.Current.Hash == WeaponHash.StunGun) Function.Call(Hash.SET_PLAYER_WEAPON_DAMAGE_MODIFIER, Game.Player, -900f);        else Function.Call(Hash.SET_PLAYER_WEAPON_DAMAGE_MODIFIER, Game.Player, 0f);
             //Function.Call(Hash.SET_PLAYER_WEAPON_DAMAGE_MODIFIER, Game.Player, -900f);
-
-            Util.HandleMessages();
-            Util.HandleNotifications();
 
 
 
@@ -1812,17 +1924,60 @@ namespace LSPDispatch
                 {
                     //File.AppendAllText(@"" + debugpath, "\n - UpdateTick " + unit.UnitType.ToString());
                     unit.UpdateOnTick();
-                    if (Game.GameTime > unit.RefTime + 500)
+                    //Script.Wait(0);
+                    if (Game.GameTime > unit.RefTime + 1000)
                     {
                         unit.RefTime = Game.GameTime;
                         //File.AppendAllText(@"" + debugpath, "\n - Update " + unit.UnitType.ToString());
                         unit.Update();
+                      //  Script.Wait(0);
                     }
                 }
             }
             foreach (CopUnitHandler toremove in CopsToRemove) CopsChasing.Remove(toremove);
 
             states += "~n~";
+
+            if (TickRefTimeLong < Game.GameTime)
+            {
+                TickRefTimeLong = Game.GameTime + 5000;
+
+
+                //Look for cars to steal
+                List<SuspectHandler> Foot = new List<SuspectHandler>();
+                foreach (SuspectHandler suspectfoot in CriminalsActive)
+                {
+                    if (suspectfoot.State == CriminalState.Fleeing_Foot)
+                    {
+                        suspectfoot.VehiclesConsidered.Clear();
+                        Foot.Add(suspectfoot);
+                    }
+                }
+
+                if (Foot.Count > 0)
+                {
+                    foreach (Vehicle v in World.GetAllVehicles())
+                    {
+                        foreach (SuspectHandler suspectonfoot in Foot)
+                        {
+                            if (suspectonfoot.Criminal.IsInRangeOf(v.Position, 100f)) suspectonfoot.VehiclesConsidered.Add(v);
+                        }
+                    }
+                }
+
+                //Ambient criminals dynamically added
+                if (Info.IsPlayerOnDuty() && AmbientPedsCanBeCriminals.Checked)
+                {
+                    foreach (Ped ped in World.GetNearbyPeds(Game.Player.Character, 50f))
+                    {
+                        if (ped.IsOnFoot && !Util.IsCop(ped) && !ped.IsPersistent && Util.IsSubttaskActive(ped, Util.Subtask.AIMED_SHOOTING_ON_FOOT))
+                        {
+                            CriminalsActive.Add(new SuspectHandler(CriminalType.Dynamic, ped.Position, ped));
+                        }
+                    }
+                }
+            }
+
             foreach (SuspectHandler Suspect in CriminalsActive)
             {
                 if (DebugNotifications.Checked)
@@ -1901,6 +2056,9 @@ namespace LSPDispatch
                         }
                         else
                         {
+
+                         if(!Util.DecorExistsOn("HandledByCoroner", Suspect.Criminal)) Util.SetDecorInt("HandledByCoroner", Suspect.Criminal, 0);
+
                             Suspect.Clear();
                             CriminalsToRemove.Add(Suspect);
                             if ((CriminalsFleeing.Count + Suspect.Partners.Count) < 4)
@@ -1930,6 +2088,10 @@ namespace LSPDispatch
 
         }
 
+        public static bool WasCheatStringJustEntered(string cheat)
+        {
+            return Function.Call<bool>(Hash._0x557E43C447E700A8, Game.GenerateHash(cheat));
+        }
 
 
         void OnKeyUp(object sender, KeyEventArgs e)

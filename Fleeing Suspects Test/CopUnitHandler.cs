@@ -1,6 +1,7 @@
 ﻿using GTA;
 using GTA.Math;
 using GTA.Native;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -80,6 +81,9 @@ namespace LSPDispatch
         public Model LeaderModel = "s_m_y_cop_01";
         public Model PartnerModels = "s_m_y_cop_01";
 
+        public WeaponHash FirstWeaponHash = (WeaponHash) Game.GenerateHash("WEAPON_PISTOL");
+        public WeaponHash SecondtWeaponHash = (WeaponHash)Game.GenerateHash("WEAPON_PUMPSHOTGUN");
+
         public CopState State = CopState.ChaseVehicle;
         public CopUnitType UnitType;
         public List<CopUnitFlags> Flags = new List<CopUnitFlags>();
@@ -87,6 +91,8 @@ namespace LSPDispatch
         public List<Ped> Partners = new List<Ped>();
         public SuspectHandler Suspect;
         public int DrivingStyle = 4 + 8 + 16 + 32 + 262144;
+        public int ExtraDrivingStyle = 0;
+
         public Vehicle CopVehicle;
         public int GameTimeWhenSpawned = Game.GameTime;
         public int BrakeTime = Game.GameTime;
@@ -101,8 +107,62 @@ namespace LSPDispatch
         public bool ShouldRemoveCopUnit = false;
 
 
+        
+        public void HandleSpeed()
+        {
+
+            if (BrakeTime > Game.GameTime)
+            {
+                if (BrakeTime > Game.GameTime + 3000) BrakeTime = Game.GameTime + 3000;
+                /*
+                if (!Util.IntHasFlag(ExtraDrivingStyle, 1))
+                {
+                    ExtraDrivingStyle += 1;
+                    if (Util.IntHasFlag(DrivingStyle, 4)) DrivingStyle -= 4;
+                }
+                
+*/
+                float d = (CopVehicle.Velocity.Length() * 0.9f);
+                if (d > 5f) Leader.DrivingSpeed = d;
+
+                if (!Braking)
+                {
+
+                    //  UI.Notify(CopVehicle.FriendlyName + " brakes");
+                    Braking = true;
+                    //Leader.DrivingSpeed = (CopVehicle.Velocity.Length() * 0.6f);
+                }
+            }
+            else 
+            {
+                //  UI.Notify(CopVehicle.FriendlyName + " stops braking");
+                if (Braking)
+                {
+                    Leader.DrivingSpeed = 200f;
+                    Braking = false;
+                }
+                else
+                {
+                    if(State != CopState.ChaseVehicle)
+                    {
+                        if(CopVehicle.IsInRangeOf(Suspect.Criminal.Position, 30f))
+                        {
+                            Leader.DrivingSpeed = 20f;
+                         //   UI.ShowSubtitle("50f");
+                        }
+                        else
+                        {
+                            Leader.DrivingSpeed = 60f;
+                            //UI.ShowSubtitle("200f");
+                        }
+                    }
+                }
+            }
+        }
         public void UpdateOnTick()
         {
+
+           // if (Braking) CopVehicle.EngineTorqueMultiplier = 0f;
             if (Suspect != null && UnitType == CopUnitType.AirUnit && Util.IsNightTime())
             {
 
@@ -118,28 +178,35 @@ namespace LSPDispatch
             }
 
 
-            if (BrakeTime > Game.GameTime)
-            {
-                Leader.DrivingSpeed = 20f;
-                Braking = true;
-            }
-            else if (Braking)
-            {
-                Leader.DrivingSpeed = 100f;
-                Braking = false;
-            }
-
             if (DangerousIndividuals.CriminalsActive.Count == 0) ShouldRemoveCopUnit = true;
 
             //Cop driving skillz
             if (Suspect != null)
             {
-                if (!Suspect.Auth_DeadlyForce)
+                if (!Suspect.Auth_DeadlyForce || Suspect.Surrendered())
                 {
-                    Util.HandleVehicleCarefulnessArea(this, 15f);
-                    Util.HandleVehicleCarefulness(this);
+                 if(CopVehicle.IsInRangeOf(Game.Player.Character.Position, 150f))
+                    {
+                        Util.HandleVehicleCarefulnessArea(this, 15f);
+                        Util.HandleVehicleCarefulness(this);
+                    }
+                }
+                if (Util.CanWeUse(Game.Player.Character.CurrentVehicle)) // && IsVehicleBehindVehicle(Game.Player.Character.CurrentVehicle, veh, true, 0f, 30f))
+                {
+
+                    Vector3 offset = Util.GetOffset(CopVehicle, Game.Player.Character.CurrentVehicle );
+                    //DrawLine(veh.Position, Game.Player.Character.Position);
+
+                    if (Util.ForwardSpeed(CopVehicle) > Util.ForwardSpeed(Game.Player.Character.CurrentVehicle) - 3f && (((Math.Abs(offset.X) < 5 && offset.Y > 0 && offset.Y < 20) || CopVehicle.IsTouching(Game.Player.Character.CurrentVehicle))))
+                    {
+                        BrakeTime =Game.GameTime+ 1000;
+                        //UI.Notify(CopVehicle.FriendlyName + " gives way to player");
+                        //Function.Call(Hash.APPLY_FORCE_TO_ENTITY, veh, 3, 0f, -0.6f, 0f, 0f, 0f, -0.3f, 0, true, true, true, true, true);
+                    }
                 }
             }
+
+
 
             //Suspect ramming
             if (Util.CanWeUse(Suspect.VehicleChosen) && Util.ForwardSpeed(Suspect.VehicleChosen) > 1f && (!Suspect.Auth_Ramming)) Util.HandleAntiRamSystem(CopVehicle, Suspect.VehicleChosen); //Auth_Ramming
@@ -168,6 +235,9 @@ namespace LSPDispatch
                     ShouldRemoveCopUnit = true;
                 }
             }
+
+
+            //    Leader.DrivingStyle =(DrivingStyle) DrivingStyle + ExtraDrivingStyle;
         }
 
         public bool IsSurrendered(SuspectHandler suspect)
@@ -175,7 +245,42 @@ namespace LSPDispatch
             return (Suspect.State == CriminalState.Surrendering || Suspect.State == CriminalState.Arrested || Suspect.State == CriminalState.DealtWith);
         }
 
+        public void HandleDrivingStyle()
+        {
+            if (!CopVehicle.IsOnAllWheels) return;
+            
+            
+            if (Suspect != null)
+            {
+                if(!CopVehicle.IsStopped)
+                {
+                    if (!Util.IntHasFlag(ExtraDrivingStyle, 4194304))
+                    {
+                        if (State != CopState.Arrest && Util.RoadTravelDistance(Leader.Position, Suspect.Criminal.Position) > Leader.Position.DistanceTo(Suspect.Criminal.Position) * 3 && Leader.IsInRangeOf(Suspect.Criminal.Position, 150f))
+                        {
+                            ExtraDrivingStyle += 4194304;
+                            //UI.ShowSubtitle("Offroad added for " + CopVehicle.FriendlyName);
+                        }
+                    }
+                    else
+                    {
+                        if (Util.RoadTravelDistance(Leader.Position, Suspect.Criminal.Position) < Leader.Position.DistanceTo(Suspect.Criminal.Position) * 1.5f || !Leader.IsInRangeOf(Suspect.Criminal.Position, 200f))
+                        {
+                            ExtraDrivingStyle -= 4194304;
+                         //   UI.ShowSubtitle("Offroad removed for " + CopVehicle.FriendlyName);
+                        }
+                    }
+                }                
+            }
+                                
 
+
+            if (Util.CanWeUse(Leader))
+            {
+                Leader.DrivingStyle = (DrivingStyle)(DrivingStyle + ExtraDrivingStyle);
+            //    Leader.DrivingSpeed = 25f;
+            }
+        }
         public bool FindNewTarget(bool aloneOnly, bool surrenderedOnly)
         {
             if (DangerousIndividuals.CriminalsActive.Count > 0)
@@ -649,7 +754,14 @@ namespace LSPDispatch
         {
             //if (Suspect == null && !FindNewTarget() && !FindNewSuspectToArrest(true)) ShouldRemoveCopUnit = true;
 
+            HandleSpeed();
 
+            if (Util.IsDriving(Leader) || !CopVehicle.IsStopped)
+            {
+                HandleDrivingStyle();
+
+            }
+           // if (Util.CheckForObstaclesAhead(CopVehicle)) BrakeTime = Game.GameTime + 1000;
 
 
             //Stuck handler
@@ -727,7 +839,7 @@ namespace LSPDispatch
                             {
                                 if (Leader.IsOnFoot)
                                 {
-                                    if (Game.Player.Character.IsInRangeOf(Leader.Position, 200))
+                                    if (Game.Player.Character.IsInRangeOf(Leader.Position, 200f))
                                     {
                                         Leader.Task.EnterVehicle(CopVehicle, VehicleSeat.Driver, -1, 20f);
                                     }
@@ -847,6 +959,8 @@ namespace LSPDispatch
                         }
                     case CopState.Arrest:
                         {
+
+                    
                             if (!Util.IsPlayingAnim(Leader, "mp_arresting", "a_arrest_on_floor"))
                             {
                                 if (Flags.Contains(CopUnitFlags.CANT_ARREST))
@@ -862,15 +976,19 @@ namespace LSPDispatch
                                             //is cop closer to criminal
                                             if (!Leader.IsInRangeOf(Suspect.Criminal.Position, 30f))
                                             {
-                                                if (!Util.IsSubttaskActive(Leader, Util.Subtask.ENTERING_VEHICLE_GENERAL) && !Util.IsDriving(Leader))
+                                                if (!Util.IsSubttaskActive(Leader, Util.Subtask.ENTERING_VEHICLE_GENERAL) && !Util.IsDriving(Leader) && CopVehicle.IsStopped)
                                                 {
                                                     if (Leader.IsInRangeOf(Suspect.Criminal.Position, 60f))
                                                     {
-                                                        Leader.Task.DriveTo(CopVehicle, Suspect.Criminal.Position, 10f, 15f, DrivingStyle);
+                                                       //Leader.Task.DriveTo(CopVehicle, Suspect.Criminal.Position, 10f, 15f, DrivingStyle);
+                                                      Function.Call(Hash.TASK_VEHICLE_MISSION_PED_TARGET, Leader, CopVehicle, Suspect.Criminal, 4, 30f, DrivingStyle, 10f, 1f, true);
+
                                                     }
                                                     else
                                                     {
-                                                        Leader.Task.DriveTo(CopVehicle, Suspect.Criminal.Position, 25f, 25f, DrivingStyle);
+                                                        Function.Call(Hash.TASK_VEHICLE_MISSION_PED_TARGET, Leader, CopVehicle, Suspect.Criminal, 4, 30f, DrivingStyle, 30f, 1f, true);
+
+                                                       // Leader.Task.DriveTo(CopVehicle, Suspect.Criminal.Position, 25f, 25f, DrivingStyle);
                                                     }
                                                 }
                                             }
@@ -878,24 +996,53 @@ namespace LSPDispatch
                                             {
                                                 if (Leader.IsStopped)
                                                 {
-                                                    if (!Leader.IsInRangeOf(Suspect.Criminal.Position, 2f))
-                                                    {
-                                                        if (Suspect.State != CriminalState.Arrested)
-                                                        {
-                                                            if (Leader.Weapons.Current.Hash != WeaponHash.Unarmed)
-                                                            {
+                                                    CriminalState cstate = Suspect.State;
 
-                                                                Function.Call(Hash.TASK_GO_TO_ENTITY_WHILE_AIMING_AT_ENTITY, Leader, Suspect.Criminal, Suspect.Criminal, 2f, false, 1.5f, 1f, true, true, 0);
+                                                    if(cstate == CriminalState.Surrendering)
+                                                    {
+
+                                                        if (!Leader.IsInRangeOf(Suspect.Criminal.Position, 2f))
+                                                        {
+                                                            if (Suspect.State != CriminalState.Arrested)
+                                                            {
+                                                                if (Leader.Weapons.Current.Hash != WeaponHash.Unarmed)
+                                                                {
+                                                                    Function.Call(Hash.TASK_GO_TO_ENTITY_WHILE_AIMING_AT_ENTITY, Leader, Suspect.Criminal, Suspect.Criminal, 2f, false, 1.5f, 1f, true, true, 0);
+                                                                }
+                                                                else Function.Call(Hash.TASK_GO_TO_ENTITY, Leader, Suspect.Criminal, -1, 1.5f, 2f, 1f, 0);
                                                             }
-                                                            else Function.Call(Hash.TASK_GO_TO_ENTITY, Leader, Suspect.Criminal, -1, 1.5f, 2f, 1f, 0);
                                                         }
                                                     }
-                                                    else if (Suspect.State == CriminalState.Arrested)
+                                                    if (cstate == CriminalState.Arrested || cstate == CriminalState.DealtWith)
                                                     {
-                                                        //Function.Call(Hash.TASK_ARREST_PED, Leader, Suspect.Criminal);
+
                                                         float speed = 1f;
                                                         if (DangerousIndividuals.CriminalsActive.Count > 1) speed = 3f;
-                                                        Function.Call(Hash.TASK_GO_TO_ENTITY, Leader, CopVehicle, -1, 4f, speed, 1f, 0);
+                                                        if (Suspect.Criminal.IsSittingInVehicle(CopVehicle))
+                                                        {
+                                                            if (Leader.IsOnFoot)
+                                                            {
+                                                                Leader.Task.EnterVehicle(CopVehicle, VehicleSeat.Driver, 10000, 1f);
+                                                                /*
+                                                                if (Util.GetDoorFromSeat(CopVehicle, Suspect.Criminal.SeatIndex))
+                                                                {
+
+                                                                    Function.Call(Hash.TASK_OPEN_VEHICLE_DOOR, Leader, CopVehicle, -1, (int)Util.GetDoorFromSeat(CopArrestingMe.CopVehicle, seat), 2f);
+
+                                                                }*/
+                                                            }
+                                                            else if (!Util.IsDriving(Leader))
+                                                            {
+                                                                Leader.Task.DriveTo(CopVehicle, Util.GetClosestLocation(Leader.Position, Info.AllPoliceStations), 20f, 30f, 1 + 2 + 8 + 16 + 32 + 128);
+                                                                CopVehicle.SirenActive = true;
+                                                            }
+
+                                                        }
+                                                        else
+                                                        {
+                                                            if (Leader.IsInRangeOf(Suspect.Criminal.Position, 4f)) Function.Call(Hash.TASK_GO_TO_ENTITY, Leader, CopVehicle, -1, 4f, speed, 1f, 0);
+                                                            //Function.Call(Hash.TASK_GO_TO_ENTITY, Leader, CopVehicle, -1, 4f, speed, 1f, 0);
+                                                        }
                                                     }
                                                 }
                                             }
@@ -905,11 +1052,11 @@ namespace LSPDispatch
                             }
 
 
-                            if (Suspect.Criminal.IsSittingInVehicle())
+                            if (Suspect.Criminal.IsInPoliceVehicle)
                             {
                                 if (Suspect.Criminal.CurrentVehicle == CopVehicle)
                                 {
-                                    Suspect.ShouldRemoveCriminal = true;
+                                    //Suspect.ShouldRemoveCriminal = true;
 
                                     if (Util.AnyBackseatEmpty(CopVehicle))
                                     {
@@ -917,7 +1064,7 @@ namespace LSPDispatch
                                     }
                                     else
                                     {
-                                        ShouldRemoveCopUnit = true;
+                                    //    ShouldRemoveCopUnit = true;
                                         if (DangerousIndividuals.AllowChaseNotifications.Checked) Util.AddNotification("web_lossantospolicedept", "~b~" + CopVehicle.FriendlyName + " unit", "Suspect in custody", "Suspect in custody, I'm out with them.");
                                     }
                                     //string bool sex = Suspect.Criminal.Is
@@ -931,19 +1078,45 @@ namespace LSPDispatch
                         }
                     case CopState.SecureArrest:
                         {
+
+                            if (Leader.IsInRangeOf(Suspect.Criminal.Position, 150f) && Suspect.CopArrestingMe==null)
+                            {
+                                SetUnitState(CopState.Arrest);
+                            }
                             //if (Leader.IsInCombat) Leader.Task.ClearAll();
+                            if (Suspect.Criminal.IsSittingInVehicle() && Util.IsPoliceVehicle(Suspect.Criminal.CurrentVehicle))
+                            {
+
+                                if (!Util.IsDriving(Leader))
+                                {
+                                    Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER, Leader, CopVehicle, 20f, 1+2+4+8+16+32+128);
+                                }
+
+                                if(!Leader.IsInRangeOf(Game.Player.Character.Position, 200f)) ShouldRemoveCopUnit = true;
+
+                                break;
+                            }
 
                             if (!Leader.IsInRangeOf(Suspect.Criminal.Position, 30f))
                             {
                                 if (!Util.IsSubttaskActive(Leader, Util.Subtask.ENTERING_VEHICLE_GENERAL) && !Util.IsDriving(Leader))
                                 {
-                                    Leader.Task.DriveTo(CopVehicle, Suspect.Criminal.Position, 25f, 15f, DrivingStyle);
+
+                                    Function.Call(Hash.TASK_VEHICLE_MISSION_PED_TARGET, Leader, CopVehicle, Suspect.Criminal, 4, 30f, DrivingStyle, 25f, 1f, true);
+
+                                   // Leader.Task.DriveTo(CopVehicle, Suspect.Criminal.Position, 25f, 15f, DrivingStyle);
                                 }
                             }
                             else
                             {
-                                if (Leader.IsStopped && !Leader.IsInRangeOf(Suspect.Criminal.Position, 5f) && !Util.IsSubttaskActive(Leader, Util.Subtask.AIMING_GUN)) Function.Call(Hash.TASK_GO_TO_ENTITY_WHILE_AIMING_AT_ENTITY, Leader, Suspect.Criminal, Suspect.Criminal, 1f, false, 4f, 1f, true, true, 0);
+                                if (Leader.IsStopped && !Leader.IsInRangeOf(Suspect.Criminal.Position, 10f) && !Util.IsSubttaskActive(Leader, Util.Subtask.AIMING_GUN))
+                                {
+
+                                    Function.Call(Hash.TASK_GO_TO_ENTITY, Leader, Suspect.Criminal, -1, 4f, 2f, 5f, 0);
+                                   // Function.Call(Hash.TASK_GO_TO_ENTITY_WHILE_AIMING_AT_ENTITY, Leader, Suspect.Criminal, Suspect.Criminal, 1f, false, 4f, 1f, true, true, 0);
+                                }
                             }
+
                             break;
                         }
                     case CopState.AwaitingOrders:
@@ -954,7 +1127,6 @@ namespace LSPDispatch
 
                 }
             }
-
         }
         public bool AreAllPartnersInTheCar()
         {

@@ -103,7 +103,16 @@ public class Util : Script
         UNKNOWN = 0, NO_DAMAGE = 1, MELEE = 2, BULLET = 3, EXPLOSIVE = 5, FIRE = 6, ELECTRIC = 10, BARBED_WIRE = 11, EXTINGUISHER = 12, GAS = 13, WATER_CANNON = 14,
     }
 
+    public static bool TerrainIsEven(Vector3 pos, float maxZ)
+    {
+        int zDiff = 0;
+        for(int i=0; i<5; i++)
+        {
+            if (Math.Abs(World.GetNextPositionOnStreet(pos.Around(30f)).Z - maxZ) > maxZ) zDiff++;
+        }
 
+        if (zDiff > 0) return false; else return true;
+    }
     public static bool IsSubttaskActive(Ped ped, Subtask task)
     {
         return Function.Call<bool>(Hash.GET_IS_TASK_ACTIVE, ped, (int)task);
@@ -115,8 +124,7 @@ public class Util : Script
         if (!Util.CanWeUse(ped)) return VehicleSeat.RightRear;
         ped = veh.GetPedOnSeat(VehicleSeat.LeftRear);
         if (!Util.CanWeUse(ped)) return VehicleSeat.LeftRear;
-
-        return VehicleSeat.Passenger;
+        return VehicleSeat.RightFront;
     }
     public static bool AnyBackseatEmpty(Vehicle veh)
     {
@@ -127,8 +135,285 @@ public class Util : Script
 
         return false;
     }
+    public static VehicleDoor GetDoorFromSeat(Vehicle v, VehicleSeat s)
+    {
+        if (s == VehicleSeat.LeftFront) return VehicleDoor.FrontLeftDoor;
+        if (s == VehicleSeat.RightFront) return VehicleDoor.FrontRightDoor;
+        if (s == VehicleSeat.LeftRear) return VehicleDoor.BackLeftDoor;
+        if (s == VehicleSeat.RightRear) return VehicleDoor.BackRightDoor;
+
+        VehicleDoor d = (VehicleDoor)10;
+        return d;
+    }
+    public static void SetUpCopUnitLoadout(CopUnitHandler unit, Vector3 pos)
+    {
+        bool Inclusive = true;
+        string Area = World.GetZoneNameLabel(pos).ToLowerInvariant();
+        string AreaFr = World.GetZoneName(pos).ToLowerInvariant();
+        string Street = World.GetStreetName(pos).ToLowerInvariant();
+
+        string UnitType = "LocalPatrol";
+
+        CopUnitType type = CopUnitType.AveragePolice;
+        List<string> Vehicles = new List<string>();
+        List<string> Peds = new List<string>();
+        List<string> Weapons = new List<string>();
+
+        List<XmlElement> Sets = new List<XmlElement>();
+
+        if (unit != null) type = unit.UnitType; else type = (CopUnitType) int.Parse( Game.GetUserInput(30));
 
 
+       // UI.Notify(Area + ", "+AreaFr+", "+type.ToString());
+
+        switch (type)
+        {
+            case CopUnitType.Bike:
+                {
+                    UnitType = "BikePatrol"; //StatePatrol ignored for now
+                    break;
+                }
+            case CopUnitType.PrisonerTransporter:
+                {
+                    UnitType = "Transport"; //StatePatrol ignored for now
+                    break;
+                }
+            case CopUnitType.AveragePolice:
+            case CopUnitType.Patrol:
+                {
+                    UnitType = "LocalPatrol"; //StatePatrol ignored for now
+                    break;
+                }
+            case CopUnitType.LocalNoose:
+                {
+                    UnitType = "LocalSWAT";
+                    break;
+                }
+            case CopUnitType.NOoSE:
+                {
+                    UnitType = "NooseSWAT";
+                    break;
+                }
+            case CopUnitType.NOoSEAirUnit:
+                {
+                    UnitType = "NooseAir";
+                    break;
+                }
+            case CopUnitType.AirUnit:
+                {
+                    UnitType = "LocalAir";
+                    break;
+                }
+            case CopUnitType.Army:
+                {
+                    UnitType = "LocalSWAT";
+                    break;
+                }
+            case CopUnitType.ArmyAirUnit:
+                {
+                    UnitType = "NooseAir";
+                    break;
+                }
+        }
+
+        List<string> FilesToCheck = new List<string>
+        {
+            //;"Scripts/DangerousIndividuals/BackupSets/DispatchWorks.xml","Scripts/DangerousIndividuals/BackupSets/CustomBackup.xml","Scripts/DangerousIndividuals/BackupSets/backup.xml"
+        };
+
+
+        foreach (string f in Directory.GetFiles("Scripts/DangerousIndividuals/BackupSets", "backup.xml", SearchOption.AllDirectories)) FilesToCheck.Add(f);
+
+        string file = "Scripts/DangerousIndividuals/BackupSets/DispatchWorksBackup.xml";
+       // XmlElement baseElement = null;
+        XmlDocument originalXml = new XmlDocument();
+        //foreach (string file in filesto)
+        if (File.Exists(@"" + file))
+        {        
+            originalXml.Load(@"" + file);
+       //     UI.Notify("Loaded " + file);
+
+
+
+
+           // UI.Notify(originalXml.SelectNodes("/CustomBackup/" + UnitType + "/BackupRegion/BackupAreas/Area").Count.ToString());
+            foreach (XmlElement element in originalXml.SelectNodes("/CustomBackup/" + UnitType + "/BackupRegion/BackupAreas/Area"))
+            {
+                string elementArea = element.InnerText.ToLowerInvariant();
+               // UI.Notify("~b~Check " + elementArea+" on "+ (element.ParentNode.ParentNode as XmlElement).GetAttribute("nickname"));
+
+                if (elementArea == "_all_" || elementArea == Area || elementArea == Street || elementArea == AreaFr
+                        || ((elementArea == "LosSantos" || elementArea == "city") && GetMapAreaAtCoords(pos) == "city")
+                    || ((elementArea == "LosSantosCounty" || elementArea == "BlaineCounty"  || elementArea== "countryside") && GetMapAreaAtCoords(pos) == "countryside"))
+                {
+                 //   UI.Notify("Found correct area, " + (element.ParentNode.ParentNode as XmlElement).GetAttribute("nickname"));
+                    foreach (XmlElement set in element.ParentNode.ParentNode.SelectNodes("VehicleSet"))
+                    {
+                        bool CanAdd =true;
+                        foreach(XmlNode model in set.SelectNodes("Vehicles/Vehicle"))
+                        {
+
+                            Model n = model.InnerText;
+                             if (!(n).IsValid)
+                            {
+                                CanAdd = false;
+                                UI.Notify("~b~[Debug]~r~Set has invalid models (" + set.SelectSingleNode("Vehicles/Vehicle").InnerText + "), ~w~looking for another set");
+                                break;
+                            }
+                        }
+                        if (CanAdd)
+                        {
+                            Sets.Add(set);
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
+        if (Sets.Count==0 || !Inclusive)
+        {
+            file = "Scripts/DangerousIndividuals/BackupSets/CustomBackup.xml";
+
+            if (File.Exists(@"" + file))
+            {
+                originalXml = new XmlDocument();
+                originalXml.Load(@"" + file);
+             //   UI.Notify("Loaded " + file);
+
+                foreach (XmlElement element in originalXml.SelectNodes("/CustomBackup/" + UnitType + "/BackupRegion/BackupAreas/Area"))
+                {
+                    string elementArea = element.InnerText.ToLowerInvariant();
+                    // UI.Notify("~b~Check " + elementArea+" on "+ (element.ParentNode.ParentNode as XmlElement).GetAttribute("nickname"));
+
+                    if (elementArea == "_all_" || elementArea == Area || elementArea == Street || elementArea == AreaFr
+                        || ((elementArea == "LosSantos" || elementArea == "city") && GetMapAreaAtCoords(pos) == "city")
+                    || ((elementArea == "LosSantosCounty" || elementArea == "BlaineCounty" || elementArea == "countryside") && GetMapAreaAtCoords(pos) == "countryside"))
+                    {
+                      //  UI.Notify("Found correct area, " + (element.ParentNode.ParentNode as XmlElement).GetAttribute("nickname"));
+
+                        foreach (XmlElement set in element.ParentNode.ParentNode.SelectNodes("VehicleSet"))
+                        {
+                            bool CanAdd = true;
+                            foreach (XmlNode model in set.SelectNodes("Vehicles/Vehicle"))
+                            {
+
+                                Model n = model.InnerText;
+                                if (!(n).IsValid)
+                                {
+                                    CanAdd = false;
+                                    UI.Notify("~b~[Debug]~r~Set has invalid models (" + set.SelectSingleNode("Vehicles/Vehicle").InnerText + "), ~w~looking for another set");
+                                    break;
+                                }
+
+                            }
+                            if (CanAdd)
+                            {
+                                Sets.Add(set);
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                }
+
+            }
+        }
+        if (Sets.Count == 0 || !Inclusive)
+        {
+            file = "Scripts/DangerousIndividuals/BackupSets/backup.xml";
+            if (File.Exists(@"" + file))
+            {
+                originalXml = new XmlDocument();
+                originalXml.Load(@"" + file);
+                UI.Notify("Loaded " + file);
+                foreach (XmlElement element in originalXml.SelectNodes("/BackupUnits/" + UnitType + "/*"))
+                {
+
+                 //   UI.Notify("~b~Check " + element.Name);
+                    if ((element.Name == "LosSantosCity" && GetMapAreaAtCoords(pos) == "city") ||
+                        (element.Name == "LosSantosCounty" && GetMapAreaAtCoords(pos) == "countryside") ||
+                        (element.Name == "BlaineCounty" && GetMapAreaAtCoords(pos) == "countryside") ||
+                        (element.Name == "NorthYankton" && GetMapAreaAtCoords(pos) != "city"))
+                    {
+                       // UI.Notify("Found correct area, " + element.Name);
+                        foreach (XmlElement set in element.SelectNodes("VehicleSet"))
+                        {
+                       //     UI.Notify(set.InnerText);
+                            Sets.Add(set);
+                        }
+                        break;
+                    }
+                }
+            }
+
+        }
+
+            if (1==1)
+            {
+
+                if (Sets.Count > 0)
+                {
+
+                    XmlElement finalset = Sets[RandomInt(0, Sets.Count - 1)];
+
+                    foreach (XmlElement subset in finalset.SelectNodes("Vehicles/Vehicle"))
+                    {
+
+                        Vehicles.Add(subset.InnerText);
+
+                    }
+                    foreach (XmlElement subset in finalset.SelectNodes("Weapons/Weapon"))
+                    {
+                        Weapons.Add(subset.InnerText);
+
+                    }
+                    foreach (XmlElement subset in finalset.SelectNodes("Peds/Ped"))
+                    {
+                        Peds.Add(subset.InnerText);
+                    }
+                }
+            else
+            {
+              //  UI.Notify("No sets");
+                return;
+            }
+            }
+
+           // foreach (string ped in Peds) UI.Notify(ped);
+                //foreach (string ped in Weapons) UI.Notify(ped);
+
+             //   foreach (string ped in Vehicles) UI.Notify(ped);
+            
+            if (unit != null)
+            {
+                if (Vehicles.Count > 0) unit.VehicleModel = Vehicles[RandomInt(0, Vehicles.Count - 1)];
+                if (Peds.Count > 0)
+                {
+                    unit.LeaderModel = Peds[RandomInt(0, Peds.Count - 1)];
+                    unit.PartnerModels = Peds[RandomInt(0, Peds.Count - 1)];
+                }
+                if (Weapons.Count > 0)
+                {
+                    if (Weapons.Count == 2)
+                    {
+                        unit.FirstWeaponHash = (WeaponHash)Game.GenerateHash(Weapons[0]);
+                        unit.SecondtWeaponHash = (WeaponHash)Game.GenerateHash(Weapons[1]);
+                    }
+                    else
+                    {
+                        unit.FirstWeaponHash = (WeaponHash)Game.GenerateHash(Weapons[RandomInt(0, Weapons.Count - 1)]);
+                        unit.SecondtWeaponHash = (WeaponHash)Game.GenerateHash(Weapons[RandomInt(0, Weapons.Count - 1)]);
+                    }
+                }
+            }
+            //UI.Notify(CarModel + " - " + PedModel + "-" + (WeaponHash)unit.FirstWeaponHash);
+        }
+    
+        
+        
+    
 
     /*
     string TranslateAreaHash(int hash)
@@ -267,11 +552,11 @@ public class Util : Script
             if (CanWeUse(veh) && CanWeUse(veh.GetPedOnSeat(VehicleSeat.Driver)) && veh.GetPedOnSeat(VehicleSeat.Driver).IsAlive && veh.Speed > 3f)
             {
                 float speed = 0;
-                RaycastResult ray = World.RaycastCapsule(veh.Position, veh.ForwardVector, 20f, 5f, IntersectOptions.Everything, veh);
-                if (ray.DitHitEntity && ray.HitEntity.Velocity.Length() > 0f)
+                RaycastResult ray = World.RaycastCapsule(veh.Position+(veh.ForwardVector*3),veh.Velocity.Normalized*20f, 20f, 2f, IntersectOptions.Everything, veh);
+                if (ray.DitHitEntity && ray.HitEntity.Velocity.Length() > 0f && (ray.HitEntity.Model.IsVehicle || ray.HitEntity.Model.IsPed))
                 {
 
-                    //Disable allow suspect raming
+                    //Disable to allow suspect raming
                     if (unit.Suspect != null && unit.Suspect.Auth_Ramming && CanWeUse(unit.Suspect.VehicleChosen) && unit.Suspect.VehicleChosen == ray.HitEntity) return;
 
                     //DrawLine(veh.Position, ray.HitCoords);
@@ -286,36 +571,33 @@ public class Util : Script
                     {
                         relativespeed = -3f;
                     }
-                    if (veh.Speed > speed + relativespeed && AnyVehicleNear(veh.Position + (veh.ForwardVector * 10), 9))
+                    if (veh.Speed > speed + relativespeed && AnyVehicleNear(veh.Position + (veh.ForwardVector * 20), 9))
                     {
                         /*
                         veh.BrakeLightsOn = true;
                         Function.Call(Hash.APPLY_FORCE_TO_ENTITY, veh, 3, 0f, -0.6f, 0f, 0f, 0f, -0.3f, 0, true, true, true, true, true);
                         //veh.EngineTorqueMultiplier = -100;ç
                         */
-                        unit.BrakeTime = Game.GameTime + 500;
+                        unit.BrakeTime += Game.GameTime + 500;
                     }
                 }
-                if (CanWeUse(Game.Player.Character.CurrentVehicle) && IsVehicleBehindVehicle(Game.Player.Character.CurrentVehicle, veh, true, 0f, 30f))
-                {
-                    //DrawLine(veh.Position, Game.Player.Character.Position);
 
-                    if ((ForwardSpeed(veh) > ForwardSpeed(Game.Player.Character.CurrentVehicle) - 3f) || veh.IsTouching(Game.Player.Character.CurrentVehicle))
-                    {
-                        unit.BrakeTime = Game.GameTime + 500;
-
-                        //Function.Call(Hash.APPLY_FORCE_TO_ENTITY, veh, 3, 0f, -0.6f, 0f, 0f, 0f, -0.3f, 0, true, true, true, true, true);
-                    }
-                }
             }
         }
     }
     public static bool IsOffroadCapable(Vehicle veh)
     {
+
+        if (veh.ClassType == VehicleClass.OffRoad || veh.ClassType == VehicleClass.Muscle) return true;
+
         if (OffroadCapableVehicles.Contains(veh.Model)) return true;
         return false;
     }
-
+    public static bool IntHasFlag(int number, int flag)
+    {
+        if ((number & (int)flag) != 0) return true;
+        return false;
+    }
     public static void VehicleAttackEntity(Ped attacker, Entity attacked)
     {
         if (CanWeUse(attacker) && CanWeUse(attacker.CurrentVehicle))
@@ -324,6 +606,22 @@ public class Util : Script
 
         }
     }
+    public static bool IsRoadBusy(Vector3 pos, int carNum)
+    {
+        OutputArgument outArgA = new OutputArgument();
+        OutputArgument outArgB = new OutputArgument();
+        if (Function.Call<bool>(Hash.GET_VEHICLE_NODE_PROPERTIES, pos.X, pos.Y, pos.Z, outArgA, outArgB))
+        {
+            int busy = outArgA.GetResult<int>();
+            int flags = outArgB.GetResult<int>();
+
+            //DisplayHelpTextThisFrame("Busy:" + busy + "~n~Flags:" + flags);
+            if (busy >= carNum) return true;
+
+            //BOOL GET_VEHICLE_NODE_PROPERTIES(float x, float y, float z, int *density, int* flags) // 0x0568566ACBB5DEDC 0xCC90110B
+        }
+        return false;
+    }
     public static void HandleVehicleCarefulnessArea(CopUnitHandler unit, float maxSpeed)
     {
         if (!Game.IsPaused)
@@ -331,44 +629,43 @@ public class Util : Script
             Vehicle veh = unit.CopVehicle;
             if (CanWeUse(veh) && CanWeUse(veh.GetPedOnSeat(VehicleSeat.Driver)) && veh.GetPedOnSeat(VehicleSeat.Driver).IsAlive && veh.IsOnAllWheels)
             {
-                Vector3 area = veh.Position + (veh.ForwardVector * (veh.Model.GetDimensions().Y * 4));
-                GTA.Vehicle[] vehs = World.GetNearbyVehicles(area, veh.Model.GetDimensions().Y);
-                if (vehs.Length > 0)
-                {
-                    Vehicle TargetVeh = vehs[0];
-                    if (CanWeUse(TargetVeh))
-                    {
-                        //DrawLine(veh.Position, TargetVeh.Position);
-                        if (TargetVeh.Speed > 4f)
-                        {
-                            if (veh.Speed > TargetVeh.Speed + maxSpeed)
-                            {
-                                /*veh.BrakeLightsOn = true;
-                                Function.Call(Hash.APPLY_FORCE_TO_ENTITY, veh, 3, 0f, -0.6f, 0f, 0f, 0f, -0.3f, 0, true, true, true, true, true);
-                                */
-                                unit.BrakeTime = Game.GameTime + 500;
+                Vector3 area = veh.Position + (veh.Velocity.Normalized * ((veh.Model.GetDimensions().Y * 4)));
 
-                            }
-                        }
-                        else
-                        {
-                            //DrawLine(veh.Position, TargetVeh.Position);
-
-                            if (veh.Speed > 10f)
-                            {
-                                unit.BrakeTime = Game.GameTime + 500;
-                                /*
-                                veh.BrakeLightsOn = true;
-                                Function.Call(Hash.APPLY_FORCE_TO_ENTITY, veh, 3, 0f, -0.6f, 0f, 0f, 0f, -0.3f, 0, true, true, true, true, true);
-                                */
-                            }
-                        }
-                    }
-                }
+                if (IsRoadBusy(area, 10)) unit.BrakeTime += 2000;
             }
         }
     }
-    
+    public static bool CheckForObstaclesAhead(Vehicle v)
+    {
+        float spd = v.Speed;
+        if (spd < 5f) spd = 10f;
+
+        if (spd > 100) spd = 100f;
+        Vector3 direction = v.ForwardVector * (spd);// v.Position+(v.RightVector * -1) + (v.Velocity);// ChaserPed.CurrentVehicle.Velocity;
+        Vector3 directionleft = (v.RightVector * -1) + (v.ForwardVector * spd);// ChaserPed.CurrentVehicle.Velocity;
+        Vector3 directionright = (v.RightVector * 1) + (v.ForwardVector * spd);// ChaserPed.CurrentVehicle.Velocity;
+                                                                               //Vector3 direction = ChaserPed.CurrentVehicle.Position + ChaserPed.CurrentVehicle.ForwardVector * (ChaserPed.CurrentVehicle.Speed*2f);// ChaserPed.CurrentVehicle.Velocity;
+        Vector3 origin = v.Position + (v.ForwardVector * (v.Model.GetDimensions().Y / 2));
+
+        RaycastResult cast = World.Raycast(origin, direction, 2f, IntersectOptions.Map | IntersectOptions.Objects, v);
+        RaycastResult castleft = World.Raycast(origin, directionleft, 2f, IntersectOptions.Map | IntersectOptions.Objects, v);
+        RaycastResult castright = World.Raycast(origin, directionright, 2f, IntersectOptions.Map | IntersectOptions.Objects, v);
+
+       // UI.ShowSubtitle(cast.SurfaceNormal.Z.ToString(), 1000);
+        //DrawLine(origin, cast.HitCoords);
+        //DrawLine(origin, castleft.HitCoords);
+        //DrawLine(origin, castright.HitCoords);
+        if ((cast.DitHitAnything && Math.Abs(cast.SurfaceNormal.Z) < 0.8)
+            || (castleft.DitHitAnything && Math.Abs(castleft.SurfaceNormal.Z) < 0.8)
+            || (castright.DitHitAnything && Math.Abs(castright.SurfaceNormal.Z) < 0.8))
+        {
+
+            // UI.Notify(v+ " WALL");
+            return true;
+        }
+
+        return false;
+    }
     public static void HandleAntiRamSystem(Vehicle offender, Vehicle offended)
     {
         if (!Game.IsPaused)
@@ -502,6 +799,49 @@ public class Util : Script
         if (Candidates.Count > 0) return Candidates[RandomInt(0, Candidates.Count - 1)]; else return null;
     }
 
+    public static Vehicle LookForGetawayVehiclesInList(List<Vehicle> Vehs, Vector3 pos, float radius, int minPassengerSeats, bool FastVehs, bool HeavyVehs, bool PoliceVehs, bool Empty, bool Occupied)
+    {
+        List<Vehicle> Candidates = new List<Vehicle>();
+        bool VehiclesNearby = false;
+
+        //Is Any Vehicle nearby
+        foreach (Vehicle veh in Vehs)
+        {
+            if (veh.Speed < 1f && veh.IsInRangeOf(pos, radius)) VehiclesNearby = true;
+            break;
+        }
+
+        //If any vehicle nearby, look for vehicles farther (so the preferences thing works)
+        if (VehiclesNearby)
+        {
+            foreach (Vehicle veh in Vehs)
+            {
+                if (!veh.IsInRangeOf(pos, radius * 2)) continue;
+                if ((veh.Model.IsCar || veh.Model.IsBike) && veh.PassengerSeats >= minPassengerSeats && veh.Speed < 2f && veh.IsAlive && !veh.IsOnFire && veh.IsDriveable && veh.Health > 700 && veh.IsOnAllWheels && !IsPlayerOrCopNearby(veh.Position, 30f))
+                {
+                    Ped driver = veh.GetPedOnSeat(VehicleSeat.Driver);
+                    if (((Occupied && CanWeUse(driver)) || (Empty && !CanWeUse(driver)))) if (!IsPoliceVehicle(veh) || PoliceVehs) Candidates.Add(veh);
+                }
+            }
+        }
+
+        //Filter by preferences
+        foreach (Vehicle veh in Candidates)
+        {
+            if (FastVehs)
+            {
+                if (veh.ClassType == VehicleClass.Super) return veh;
+                if (veh.ClassType == VehicleClass.Sports) return veh;
+                if (veh.ClassType == VehicleClass.SportsClassics) return veh;
+            }
+            if (HeavyVehs)
+            {
+                if (IsBig(veh) || veh.ClassType == VehicleClass.SUVs || veh.ClassType == VehicleClass.Vans) return veh;
+            }
+            if (PoliceVehs && IsPoliceVehicle(veh)) return veh;
+        }
+        if (Candidates.Count > 0) return Candidates[RandomInt(0, Candidates.Count - 1)]; else return null;
+    }
 
     public static bool IsBig(Vehicle veh)
     {
@@ -665,6 +1005,7 @@ public class Util : Script
             {
                 patience++;
                 finalpos = World.GetSafeCoordForPed(desiredPos.Around(patience * 2));
+                Script.Wait(1);
             }
         }
         else
@@ -672,12 +1013,16 @@ public class Util : Script
             int patience = 0;
             while (patience < 30 && finalpos == Vector3.Zero)
             {
+                Script.Wait(1);
+
                 patience++;
                 int NodeID = Function.Call<int>(Hash.GET_NTH_CLOSEST_VEHICLE_NODE_ID, desiredPos.X, desiredPos.Y, desiredPos.Z, NodeNumber, type, 300f, 300f);
                 if (ForceOffroad)
                 {
                     while (!Function.Call<bool>(Hash._GET_IS_SLOW_ROAD_FLAG, NodeID) && NodeNumber < 500)
                     {
+                        Script.Wait(1);
+
                         NodeNumber++;
                         NodeID = Function.Call<int>(Hash.GET_NTH_CLOSEST_VEHICLE_NODE_ID, desiredPos.X, desiredPos.Y, desiredPos.Z, NodeNumber + 5, type, 300f, 300f);
                     }
@@ -699,7 +1044,7 @@ public class Util : Script
     }
     public static bool IsDriving(Ped ped)
     {
-        return (Util.IsSubttaskActive(ped, Util.Subtask.DRIVING_WANDERING) || Util.IsSubttaskActive(ped, Util.Subtask.DRIVING_GOING_TO_DESTINATION_OR_ESCORTING));
+        return (Util.IsSubttaskActive(ped, Util.Subtask.DRIVING_WANDERING) || Util.IsSubttaskActive(ped, Util.Subtask.DRIVING_GOING_TO_DESTINATION_OR_ESCORTING)) || Util.IsSubttaskActive(ped, (Subtask)12);
     }
     public static bool IsPlayingAnim(Ped ped, string animDict, string AnimName)
     {
@@ -836,7 +1181,7 @@ public class Util : Script
     public static bool IsPoliceVehicle(Vehicle veh)
     {
         Vector3 vehpos = veh.Position;
-        float radius = veh.Model.GetDimensions().Y;
+        float radius = veh.Model.GetDimensions().Y/2;
         return Function.Call<bool>(Hash.IS_COP_VEHICLE_IN_AREA_3D, vehpos.X + radius, vehpos.Y + radius, vehpos.Z + radius, vehpos.X - radius, vehpos.Y - radius, vehpos.Z - radius);
     }
 
@@ -1025,7 +1370,13 @@ public class Util : Script
     {
         return ent1.Model.GetDimensions().Length() > (ent2.Model.GetDimensions().Length()+ targetModifier);
     }
+    public static Vector3 GetOffset(Entity reference, Entity ent)
+    {
 
+        Vector3 pos = ent.Position;
+        return Function.Call<Vector3>(Hash.GET_OFFSET_FROM_ENTITY_GIVEN_WORLD_COORDS, reference, pos.X, pos.Y, pos.Z);
+
+    }
 
     public static bool IsThisEntityAheadThatEntity(Entity ent1, Entity ent2, float MinAheadDistance)
     {
@@ -1058,6 +1409,18 @@ public class Util : Script
         Vector3 back = veh.Position;
         Vector3 raycastend=veh.RightVector * (int)sideRef;
         RaycastResult raycast = World.Raycast(back, raycastend, 10f, IntersectOptions.Everything, veh);
+        if (raycast.DitHitEntity && raycast.HitEntity.Model.IsVehicle) return raycast.HitEntity as Vehicle;
+        return null;
+    }
+
+
+    public static Vehicle GetVehicleInDirection(Vehicle veh, Vector3 dir, float range)
+    {
+        Vector3 back = veh.Position;
+       // Vector3 raycastend = veh.RightVector * (int)sideRef;
+        RaycastResult raycast = World.Raycast(veh.Position, dir, range, IntersectOptions.Everything, veh);
+
+      //  DrawLine(veh.Position, veh.Position + dir);
         if (raycast.DitHitEntity && raycast.HitEntity.Model.IsVehicle) return raycast.HitEntity as Vehicle;
         return null;
     }
@@ -1115,7 +1478,7 @@ public class Util : Script
     }
     public static bool AreVehsGoingAtSimilarSpeeds(Vehicle veh1, Vehicle veh2, float speedtreshold)
     {
-        return (veh1.Speed - veh2.Speed) < speedtreshold;
+        return Math.Abs(veh1.Speed - veh2.Speed) < speedtreshold;
     }
     public static Vehicle GetVehicleBehindThatVehicle(Vehicle veh, float maxDistance)
     {
@@ -1587,8 +1950,49 @@ public class Util : Script
         }
     }
 
+    public static string HandledByTow = "HandledByTow";
+    public static string DontInfluence = "DontInfluence";
 
 
+    public static bool DecorExistsOn(string decor, Entity e)
+    {
+        if (!CanWeUse(e)) return false;
+        return Function.Call<bool>(Hash.DECOR_EXIST_ON, e, decor);
+    }
+
+    public static float GetDecorFloat(string decor, Entity e)
+    {
+        if (!CanWeUse(e)) return -2;
+        return Function.Call<float>(Hash._DECOR_GET_FLOAT, e, decor);
+    }
+
+    public static int GetDecorInt(string decor, Entity e)
+    {
+        if (!CanWeUse(e)) return -2;
+        return Function.Call<int>(Hash.DECOR_GET_INT, e, decor);
+    }
+    public static bool GetDecorBool(string decor, Entity e)
+    {
+        if (!CanWeUse(e)) return false;
+        return Function.Call<bool>(Hash.DECOR_GET_BOOL, e, decor);
+    }
+
+    public static void SetDecorBool(string decor, Entity e, bool i)
+    {
+        if (!CanWeUse(e)) return;
+        Function.Call(Hash.DECOR_SET_BOOL, e, decor, i);
+    }
+    public static void SetDecorInt(string decor, Entity e, int i)
+    {
+        if (!CanWeUse(e)) return;
+        Function.Call(Hash.DECOR_SET_INT, e, decor, i);
+    }
+
+    public static void SetDecorFloat(string decor, Entity e, float i)
+    {
+        if (!CanWeUse(e)) return;
+        Function.Call(Hash._DECOR_SET_FLOAT, e, decor, i);
+    }
 
 }
 

@@ -814,20 +814,20 @@ CriminalFlags.ONGOING_CHASE_PATROL
             unit.PartnerModels = "s_m_y_cop_01";
             WeaponHash firstweapon = WeaponHash.Unarmed;
             WeaponHash secondweapon = WeaponHash.Unarmed;
-            Info.GetCorrectUnitForArea(unit, pos);
+
+            Util.SetUpCopUnitLoadout(unit, pos);
+
+          //  Info.GetCorrectUnitForArea(unit, pos);
             switch (type)
             {
-
-
                 case CopUnitType.Bike:
                     {
-
                         unit.Flags.Add(CopUnitFlags.LEAVES_IF_VEH_DAMAGED);
                         unit.Flags.Add(CopUnitFlags.LEAVES_IF_HURT);
                         unit.Flags.Add(CopUnitFlags.ATTEMPTS_TASING);
                         unit.Flags.Add(CopUnitFlags.CANT_ARREST);
 
-                        firstweapon = WeaponHash.Pistol;
+                     if(firstweapon== WeaponHash.Unarmed)   firstweapon = WeaponHash.Pistol;
                         break;
                     }
                 case CopUnitType.Patrol:
@@ -856,7 +856,7 @@ CriminalFlags.ONGOING_CHASE_PATROL
 							unit.VehicleModel = Info.LSSDCars[Util.RandomInt(0, Info.LSSDCars.Count - 1)];
 						}
                         */
-                        firstweapon = WeaponHash.Pistol;
+                        if (firstweapon == WeaponHash.Unarmed) firstweapon = WeaponHash.Pistol;
                         break;
                     }
                 case CopUnitType.PrisonerTransporter:
@@ -868,8 +868,8 @@ CriminalFlags.ONGOING_CHASE_PATROL
 
                         nOfPartners = 1;
                         accuracy = 70;
-                        firstweapon = WeaponHash.Pistol;
-                        secondweapon = WeaponHash.PumpShotgun;
+                        if (firstweapon == WeaponHash.Unarmed) firstweapon = WeaponHash.Pistol;
+                        if (secondweapon == WeaponHash.Unarmed) secondweapon = WeaponHash.PumpShotgun;
 
                         /*
                         if (Util.GetMapAreaAtCoords(pos) == "city")
@@ -896,8 +896,8 @@ CriminalFlags.ONGOING_CHASE_PATROL
 
                         nOfPartners = 1;
                         accuracy = 70;
-                        firstweapon = WeaponHash.Pistol;
-                        secondweapon = WeaponHash.CarbineRifle;
+                        if (firstweapon == WeaponHash.Unarmed) firstweapon = WeaponHash.Pistol;
+                        if (secondweapon == WeaponHash.Unarmed) secondweapon = WeaponHash.CarbineRifle;
 
                         break;
                     }
@@ -924,8 +924,8 @@ CriminalFlags.ONGOING_CHASE_PATROL
                         nOfPartners = 3;
                         accuracy = 85;
 
-                        firstweapon = WeaponHash.HeavyPistol;
-                        secondweapon = WeaponHash.SpecialCarbine;
+                        if (firstweapon == WeaponHash.Unarmed) firstweapon = WeaponHash.HeavyPistol;
+                        if (secondweapon == WeaponHash.Unarmed) secondweapon = WeaponHash.SpecialCarbine;
 
 
                         break;
@@ -944,8 +944,8 @@ CriminalFlags.ONGOING_CHASE_PATROL
                         nOfPartners = 7;
                         accuracy = 85;
 
-                        firstweapon = WeaponHash.HeavyPistol;
-                        secondweapon = WeaponHash.SpecialCarbine;
+                        if (firstweapon == WeaponHash.Unarmed) firstweapon = WeaponHash.HeavyPistol;
+                        if (secondweapon == WeaponHash.Unarmed) secondweapon = WeaponHash.SpecialCarbine;
                         break;
                     }
                 case CopUnitType.InsurgentNoose:
@@ -962,8 +962,8 @@ CriminalFlags.ONGOING_CHASE_PATROL
                         nOfPartners = 5;
                         accuracy = 85;
 
-                        firstweapon = WeaponHash.HeavyPistol;
-                        secondweapon = WeaponHash.SpecialCarbine;
+                        if (firstweapon == WeaponHash.Unarmed) firstweapon = WeaponHash.HeavyPistol;
+                        if (secondweapon == WeaponHash.Unarmed) secondweapon = WeaponHash.SpecialCarbine;
                         break;
                     }
 
@@ -981,8 +981,8 @@ CriminalFlags.ONGOING_CHASE_PATROL
                         accuracy = 100;
 
 
-                        firstweapon = WeaponHash.HeavyPistol;
-                        secondweapon = WeaponHash.SniperRifle;
+                        if (firstweapon == WeaponHash.Unarmed) firstweapon = WeaponHash.HeavyPistol;
+                        if (secondweapon == WeaponHash.Unarmed) secondweapon = WeaponHash.SniperRifle;
                         break;
                     }
                 case CopUnitType.Army:
@@ -1006,8 +1006,8 @@ CriminalFlags.ONGOING_CHASE_PATROL
                         accuracy = 90;
 
 
-                        firstweapon = WeaponHash.HeavyPistol;
-                        secondweapon = WeaponHash.SpecialCarbine;
+                        if (firstweapon == WeaponHash.Unarmed) firstweapon = WeaponHash.HeavyPistol;
+                        if (secondweapon == WeaponHash.Unarmed) secondweapon = WeaponHash.SpecialCarbine;
                         break;
                     }
                 case CopUnitType.ArmyAirUnit:
@@ -1029,9 +1029,8 @@ CriminalFlags.ONGOING_CHASE_PATROL
                         nOfPartners = 3;
                         accuracy = 90;
 
-
-                        firstweapon = WeaponHash.CombatPistol;
-                        secondweapon = WeaponHash.MG;
+                            if (firstweapon == WeaponHash.Unarmed) firstweapon = WeaponHash.CombatPistol;
+                        if (secondweapon == WeaponHash.Unarmed)                            secondweapon = WeaponHash.MG;
                         break;
                     }
             }
@@ -1075,11 +1074,12 @@ CriminalFlags.ONGOING_CHASE_PATROL
             unit.Leader.RelationshipGroup = DangerousIndividuals.CopsRLGroup;
 
             int maxPassengers = Function.Call<int>(Hash._GET_VEHICLE_MODEL_MAX_NUMBER_OF_PASSENGERS, (Model)unit.VehicleModel);
+            if (unit.VehicleModel == "riot2") maxPassengers--;
             if (nOfPartners > maxPassengers) nOfPartners=maxPassengers;
 
             //Fix RDE Insurgent max passengers
             if (unit.VehicleModel == "nooseinsurgent" || unit.VehicleModel == "sheriffinsurgent") maxPassengers -= 2;
-
+            if (maxPassengers <= 2 || maxPassengers- nOfPartners<2) unit.Flags.Add(CopUnitFlags.CANT_ARREST);
             Ped Partner;
             for (int i = 0; i < nOfPartners; i++)
             {

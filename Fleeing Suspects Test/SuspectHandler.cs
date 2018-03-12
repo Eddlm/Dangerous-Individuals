@@ -37,6 +37,7 @@ namespace LSPDispatch
         public Vehicle VehicleChosen;
         public CriminalState State = CriminalState.Fleeing_Foot;
         public int RefTime = Game.GameTime;
+        public int RefTimeLong = Game.GameTime;
         public int LOSTreshold = 0;
         public int ActionInertiaRefTime = 0;
         public bool IsBrakeChecking = false;
@@ -47,6 +48,8 @@ namespace LSPDispatch
         public List<CopUnitHandler> CopsChasingMe = new List<CopUnitHandler>();
         public bool InPlayerCustody = false;
         public int WanderTimeRef = 0;
+
+        public List<Vehicle> VehiclesConsidered = new List<Vehicle>();
         //Decision
         int DesperateBehavior = Game.GameTime;
         //Defines how much time the criminal will "act desperate". CriminalFlags.DYNAMIC_EVASION_BEHAVIOR is required.
@@ -196,7 +199,7 @@ namespace LSPDispatch
                 foreach (Ped partner in Partners) if (partner.CurrentBlip.Alpha != 0) partner.CurrentBlip.Alpha = 0;
             }
         }
-
+        
         //Things that need to be checked ontick
         public void UpdateFast()
         {
@@ -343,7 +346,6 @@ namespace LSPDispatch
         bool CanStandOffCops()
         {
             int CopsNearby = DangerousIndividuals.NumberOfCopsNearSuspect(this, 20f);
-            //UI.Notify(CopsNearby.ToString());
             if (CopsNearby == 0) return false;
 
             if (Flags.Contains(CriminalFlags.CAN_STANDOFF_CAUTIOUS) && (Partners.Count + 1) >= CopsNearby)
@@ -405,7 +407,7 @@ namespace LSPDispatch
                 }
             }
         }
-        
+        int NitroTime = 0;
         bool IsNitroing = false;
         void HandleNitro()
         {
@@ -414,17 +416,17 @@ namespace LSPDispatch
                 if (IsNitroing)
                 {
                   if(VehicleChosen.Acceleration>0 && Math.Abs(Function.Call<Vector3>(Hash.GET_ENTITY_ROTATION_VELOCITY, VehicleChosen, true).Z)<1f)  Info.ForceNitro(VehicleChosen);
-                    if (Game.GameTime > AbilityRefTime)
+                    if (NitroTime<Game.GameTime || Util.IsSliding(VehicleChosen, 4f))
                     {
-                        AbilityRefTime = Game.GameTime+ 5000;
+                        NitroTime = Game.GameTime+ 5000;
                         IsNitroing = false;
                     }
                 }
                 else
                 {
-                    if (CopsNearSuspect>0 && Game.GameTime > AbilityRefTime && VehicleChosen.Speed>5f && !Util.IsSliding(VehicleChosen, 1f) )
+                    if (CopsNearSuspect>0 && NitroTime+10000 < Game.GameTime  && VehicleChosen.Speed>5f && !Util.IsSliding(VehicleChosen, 1f))
                     {
-                        AbilityRefTime = Game.GameTime + 10000;
+                        NitroTime = Game.GameTime + 10000;
                         IsNitroing = true;
                     }
                 }
@@ -440,6 +442,49 @@ namespace LSPDispatch
         //Things checked each half a second
         public void Update()
         {
+
+
+            if (RefTimeLong < Game.GameTime)
+            {
+                RefTimeLong = Game.GameTime + 5000;
+
+                if(State== CriminalState.Surrendering)
+                {
+                    if (CopsNearSuspect == 0)
+                    {
+                        if(Util.RandomInt(0, 10) < 5)
+                        {
+                            State = CriminalState.Fleeing_Foot;
+
+                            if (Criminal.RelationshipGroup != DangerousIndividuals.CriminalsRLGroup) Criminal.RelationshipGroup = DangerousIndividuals.CriminalsRLGroup;
+
+                        }
+                    }
+                }
+            }
+
+            if (Criminal.CurrentBlip != null)
+            {
+                switch (State)
+                {
+                    case CriminalState.Surrendering:
+                        {
+                            if (Criminal.CurrentBlip.Color != BlipColor.Yellow) Criminal.CurrentBlip.Color = BlipColor.Yellow;
+                            break;
+                        }
+                    case CriminalState.Arrested:
+                        {
+                            if (Criminal.CurrentBlip.Color != BlipColor.Green) Criminal.CurrentBlip.Color = BlipColor.Green;
+                            break;
+                        }
+                    default:
+                        { 
+                            if (Criminal.CurrentBlip.Color != BlipColor.Red) Criminal.CurrentBlip.Color = BlipColor.Red;
+                            break;
+                        }
+                }
+            }
+            
 
             File.AppendAllText(@"" +DangerousIndividuals.debugpath, " - Blip");
 
@@ -488,7 +533,7 @@ namespace LSPDispatch
                     if (Flags.Contains(CriminalFlags.DYNAMIC_EVASION_BEHAVIOR) && DesperateBehavior < Game.GameTime && Util.RandomInt(0, 10) < 6)
                     {                        
                         DesperateBehavior = Game.GameTime + 30000;
-                        UI.Notify(VehicleChosen.FriendlyName + " enables desperate behavior for 30 seconds");
+                       // UI.Notify(VehicleChosen.FriendlyName + " enables desperate behavior for 30 seconds");
                         Function.Call(Hash.CLEAR_ENTITY_LAST_DAMAGE_ENTITY, VehicleChosen);
                     }
                     if (!Auth_Ramming)
@@ -588,7 +633,7 @@ namespace LSPDispatch
 
 
                         // LOOK FOR VEHS
-                        VehicleChosen = (Util.LookForGetawayVehicles(Criminal.Position, 40f, Partners.Count, Flags.Contains(CriminalFlags.PREFERS_FAST_VEHICLES), Flags.Contains(CriminalFlags.PREFERS_HEAVY_VEHICLES), Flags.Contains(CriminalFlags.CAN_STEAL_POLICE_VEHICLES), Flags.Contains(CriminalFlags.CAN_STEAL_PARKED_VEHICLES), Flags.Contains(CriminalFlags.CAN_STEAL_OCCUPIED_VEHICLES)));
+                        VehicleChosen = (Util.LookForGetawayVehiclesInList(VehiclesConsidered, Criminal.Position, 40f, Partners.Count, Flags.Contains(CriminalFlags.PREFERS_FAST_VEHICLES), Flags.Contains(CriminalFlags.PREFERS_HEAVY_VEHICLES), Flags.Contains(CriminalFlags.CAN_STEAL_POLICE_VEHICLES), Flags.Contains(CriminalFlags.CAN_STEAL_PARKED_VEHICLES), Flags.Contains(CriminalFlags.CAN_STEAL_OCCUPIED_VEHICLES)));
                         if (Util.CanWeUse(VehicleChosen))
                         {
                             State = CriminalState.Fleeing_Vehicle;
@@ -619,7 +664,7 @@ namespace LSPDispatch
 
                         if (!Flags.Contains(CriminalFlags.WILL_NOT_FLEE_ALWAYS_STANDOFF))//Game.GameTime > ActionInertiaRefTime + 5000 && 
                         {
-                            if (!CanStandOffCops() || ((Game.Player.Character.IsInCover()|| !Util.CanPlayerdSeePed(Criminal,true)) && Util.RandomInt(1, 10) > 7))
+                            if (!CanStandOffCops() || ((Game.Player.Character.IsInCover() || !Util.CanPlayerdSeePed(Criminal,true)) && Util.RandomInt(0, 10) < 4))
                             {
                                 ActionInertiaRefTime = Game.GameTime;
                                 State = CriminalState.Fleeing_Foot;
@@ -644,6 +689,7 @@ namespace LSPDispatch
 
                         if(!Game.Player.Character.IsInRangeOf(Criminal.Position, 200f))
                         {
+                            
                             ShouldRemoveCriminal = true;
                         }
                         if (Criminal.IsInCombat || Criminal.IsFleeing) Criminal.Task.ClearAll();
@@ -682,7 +728,7 @@ namespace LSPDispatch
 
 
                         
-                        if (CopArrestingMe != null && !Util.IsPlayingAnim(CopArrestingMe.Leader, "mp_arresting", "a_arrest_on_floor") && 
+                        if (Function.Call<float>(Hash.GET_ENTITY_ANIM_CURRENT_TIME,Criminal, "mp_bank_heist_1", "prone_l_front_intro")>0.9f && CopArrestingMe != null && !Util.IsPlayingAnim(CopArrestingMe.Leader, "mp_arresting", "a_arrest_on_floor") && 
                             CopArrestingMe.Leader.IsInRangeOf(Criminal.Position,2f) && CopArrestingMe.Leader.Velocity.Length()<1f && Criminal.Velocity.Length() < 1f && 
                             CopArrestingMe.Leader.IsOnFoot)
                         {
@@ -695,6 +741,9 @@ namespace LSPDispatch
                             Function.Call(Hash.TASK_PLAY_ANIM, Criminal, "mp_arresting", "b_arrest_on_floor", 1f, 1f, -1, 0, 0f, false, false, false);
                             Function.Call(Hash.TASK_PLAY_ANIM, CopArrestingMe.Leader, "mp_arresting", "a_arrest_on_floor", 1f, 1f, -1, 0, 0f, false, false, false);
                             State = CriminalState.Arrested;
+                            if (Util.CanWeUse(VehicleChosen) && !Util.DecorExistsOn("HandledByTow", VehicleChosen)) Util.SetDecorBool("HandledByTow", VehicleChosen, true);
+                            if (Util.CanWeUse(Criminal.LastVehicle) && !Util.DecorExistsOn("HandledByTow", Criminal.LastVehicle)) Util.SetDecorBool("HandledByTow", Criminal.LastVehicle, true);
+
                         }
                         break;
                     }
@@ -729,6 +778,7 @@ namespace LSPDispatch
                                 if (Util.CanWeUse(playerveh) && Criminal.Position.DistanceTo(playerveh.Position) < 7f)
                                 {                                    
                                     Criminal.Task.EnterVehicle(playerveh, Util.GetEmptyBackseat(playerveh));
+                                    
                                 }
                                 else
                                 {
@@ -761,13 +811,50 @@ namespace LSPDispatch
                                                         Function.Call(Hash.TASK_FOLLOW_TO_OFFSET_OF_ENTITY, Criminal, CopArrestingMe.Leader, 0, 0, 0, 1f, -1, 3f, true);
                                                     }
                                                 }
-                                                else if (!Util.IsSubttaskActive(Criminal, Util.Subtask.ENTERING_VEHICLE_GENERAL)) Criminal.Task.EnterVehicle(CopArrestingMe.CopVehicle, Util.GetEmptyBackseat(CopArrestingMe.CopVehicle), 10000, 1f);
+                                                else if (!Util.IsSubttaskActive(Criminal, Util.Subtask.ENTERING_VEHICLE_GENERAL))
+                                                {
+
+
+                                                    VehicleSeat seat = Util.GetEmptyBackseat(CopArrestingMe.CopVehicle);
+                                                    VehicleDoor door = Util.GetDoorFromSeat(CopArrestingMe.CopVehicle, seat);
+
+                                                    if (seat != VehicleSeat.RightFront || (Partners.Count == 0))
+                                                    {
+                                                        if (DangerousIndividuals.AllowChaseNotifications.Checked) Util.AddNotification("web_lossantospolicedept", "~b~" + CopArrestingMe.CopVehicle.FriendlyName + " unit", "SUSPECT IN CUSTODY", "Suspect in custody.");
+                                                        Criminal.Task.EnterVehicle(CopArrestingMe.CopVehicle, seat, 10000, 1f);
+
+
+                                                        CopArrestingMe.CopVehicle.OpenDoor(door, false, false);
+                                                        /*
+                                                        foreach(Ped p in CopArrestingMe.Partners)
+                                                        {
+                                                            if (p.IsInRangeOf(CopArrestingMe.CopVehicle.Position, 50f))
+                                                            {
+                                                                UI.Notify("Open the door of them ("+door.ToString()+")");
+
+                                                               // Function.Call(Hash.TASK_OPEN_VEHICLE_DOOR, p, CopArrestingMe.CopVehicle,-1,(int)door, 2f);
+                                                                break;
+                                                            }
+                                                        }
+                                                        */
+                                                    }
+                                                    else
+                                                    {
+                                                        if (DangerousIndividuals.AllowChaseNotifications.Checked) Util.AddNotification("web_lossantospolicedept", "~b~" + CopArrestingMe.CopVehicle.FriendlyName + " unit", "UNSUITABLE TRANSPORT", "I cannot transport the suspect.");
+
+                                                        CopArrestingMe.FindNewTarget(false, false);
+                                                       // CopArrestingMe = null;
+                                                        break;
+                                                    }
+
+                                                    //Criminal.Task.EnterVehicle(CopArrestingMe.CopVehicle, Util.GetEmptyBackseat(CopArrestingMe.CopVehicle), 10000, 1f);
+                                                }
                                             }
                                         }
-                                        else
+                                        else if(!Criminal.IsInRangeOf(Game.Player.Character.Position, 200f) || Criminal.IsInRangeOf(Util.GetClosestLocation(Criminal.Position, Info.AllPoliceStations), 50f))
                                         {
-                                            State = CriminalState.DealtWith;
-                                            CopArrestingMe = null;
+                                            State = CriminalState.DealtWith;                                            
+                                           CopArrestingMe = null;
                                         }
                                     }
                                     else { CopArrestingMe = null; }
@@ -778,8 +865,15 @@ namespace LSPDispatch
                     }
                 case CriminalState.DealtWith:
                     {
+                        if (Util.CanWeUse(VehicleChosen) && !Util.DecorExistsOn("HandledByTow", VehicleChosen)) Util.SetDecorBool("HandledByTow", VehicleChosen, true);
+                        if (Util.CanWeUse(Criminal.LastVehicle) && !Util.DecorExistsOn("HandledByTow", Criminal.LastVehicle)) Util.SetDecorBool("HandledByTow", Criminal.LastVehicle, true);
+
                         //Function.Call(Hash.TASK_PLAY_ANIM, Criminal, "MP_ARRESTING", "IDLE", -1, 1f, -1, 1 + 48, false, false, false);
+
+
                         if (!ShouldRemoveCriminal) ShouldRemoveCriminal = true;
+
+   
                         break;
                     }
             }
@@ -798,7 +892,6 @@ namespace LSPDispatch
                         if (DangerousIndividuals.DebugNotifications.Checked) UI.Notify("[CHEAT] Hidden suspect acquired a new car.");
                     }
                 }
-
             }
         }
 
@@ -811,17 +904,19 @@ namespace LSPDispatch
                 File.AppendAllText(@"" + DangerousIndividuals.debugpath, "\n - 1 ");
 
                 WanderTimeRef = 0;
-                if (DangerousIndividuals.DebugNotifications.Checked) UI.Notify(VehicleChosen.FriendlyName + " arrived to destination");
+                if (DangerousIndividuals.DebugNotifications.Checked) UI.Notify(VehicleChosen.FriendlyName + " DriveFlee update");
+
+                DriveMode Goal = DriveMode.ROAD;
+
 
 
                 //By default, wander
-                Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER, Criminal, VehicleChosen, 200f, DrivingStyle);
+                // Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER, Criminal, VehicleChosen, 200f, DrivingStyle);
 
                 File.AppendAllText(@"" + DangerousIndividuals.debugpath, "\n - 2 ");
 
-                if (Flags.Contains(CriminalFlags.DYNAMIC_EVASION_BEHAVIOR)) 
+                if (Flags.Contains(CriminalFlags.DYNAMIC_EVASION_BEHAVIOR)||1==1) 
                 {
-                    int maneuver = 0;
                     File.AppendAllText(@"" + DangerousIndividuals.debugpath, "\n - 3 ");
 
                     //Road preference modifiers and stuff
@@ -829,105 +924,131 @@ namespace LSPDispatch
                     if (CopsNearSuspect > 0) //Util.GenerateSpawnPos(Criminal.Position,Util.Nodetype.AnyRoad,false).DistanceTo(Criminal.Position)<20f &&
                     {
                         //Think about going offroad / through alleyways
+                        
                         if (DesperateBehavior > Game.GameTime)// if (Util.RandomInt(0, 100) > this.VehicleChosen.BodyHealth/10)                     //if (Util.RandomInt(0, 100) > 0)
                         {
-                            if (LOSTreshold == 0)//If the car has high clearance or, at least, its in the city
+                            if (LOSTreshold == 0)
                             {
-                                if (Util.RandomInt(0, 10) <= 5)
+
+                                Goal = DriveMode.OFFROAD;
+                                if (DangerousIndividuals.DebugNotifications.Checked) UI.Notify("Suspect will go True Offroad [Desperate]");
+
+                                /*
+                                if (Util.RandomInt(0, 10) <= 7)
                                 {
-                                    maneuver = 4194304;
-                                    if (DangerousIndividuals.DebugNotifications.Checked) UI.Notify("Suspect will go True Offroad [Desperate]");
+                                    if (Util.RandomInt(0, 10) <= 5)
+                                    {
+                                        Goal = DriveMode.OFFROAD;
+                                        if (DangerousIndividuals.DebugNotifications.Checked) UI.Notify("Suspect will go True Offroad [Desperate]");
+                                    }
+                                    else
+                                    {
+                                        Goal = DriveMode.ALLEY;
+                                        if (DangerousIndividuals.DebugNotifications.Checked) UI.Notify("Suspect will be on Dirtroad/Alleyway [Desperate]");
+                                    }
+                                }
+                                */
+                            }
+                        }
+                        else  //If the car has high clearance or, at least, its in the city
+                        {
+                            if (Util.RandomInt(0, 10) <= 5 && VehicleChosen.Speed<25f)
+                            {
+
+                                if (Util.IsOffroadCapable(VehicleChosen))
+                                {
+                                    if (DangerousIndividuals.DebugNotifications.Checked) UI.Notify("Offroad capable, will go offroad");
+                                    Goal = DriveMode.OFFROAD;
+                                    if (DangerousIndividuals.DebugNotifications.Checked) UI.Notify("Suspect will go True Offroad [normal]");
                                 }
                                 else
                                 {
-                                    maneuver = 262144;
-                                    if (DangerousIndividuals.DebugNotifications.Checked) UI.Notify("Suspect will be on Dirtroad/Alleyway [Desperate]");
+                                    if (Util.TerrainIsEven(Criminal.Position, 20))
+                                    {
+                                        if (DangerousIndividuals.DebugNotifications.Checked) UI.Notify("NOT offroad capable, but terrain is even, will go offroad");
+                                        Goal = DriveMode.OFFROAD;
+                                        if (DangerousIndividuals.DebugNotifications.Checked) UI.Notify("Suspect will go True Offroad [normal]");
+                                    }
+                                    else
+                                    {
+                                        if (DangerousIndividuals.DebugNotifications.Checked) UI.Notify("NOT offroad capable AND  terrain is NOT even, will NOT go offroad");
+                                        Goal = DriveMode.ALLEY;
+                                        if (DangerousIndividuals.DebugNotifications.Checked) UI.Notify("Suspect will be on Dirtroad/Alleyway [normal]");
+                                    }
                                 }
-                            }
-                        }
-                        else
-                        {
-                            if ((this.VehicleChosen.HeightAboveGround > 0.5) && World.GetZoneName(this.Criminal.Position) != "city")
-                            {
-                                maneuver = 4194304;
-                                if (DangerousIndividuals.DebugNotifications.Checked) UI.Notify("Suspect will go True Offroad [normal]");
-                            }
-                            else 
-                            {
-                                maneuver = 262144;
-                                if (DangerousIndividuals.DebugNotifications.Checked) UI.Notify("Suspect will be on Dirtroad/Alleyway [normal]");
                             }
                         }
                     }
                     File.AppendAllText(@"" + DangerousIndividuals.debugpath, "\n - 4 ");
 
-                    if (!Util.IsOnRoad(Criminal.Position, VehicleChosen))
+                    if (World.GetNextPositionOnStreet(Criminal.Position, false).DistanceTo(Criminal.Position)>30f)// !Util.IsOnRoad(Criminal.Position, VehicleChosen))
                     {
-                        maneuver = 4194304;
+                        Goal = DriveMode.OFFROAD;
                         if (DangerousIndividuals.DebugNotifications.Checked) UI.Notify("NOT ON ROAD, True Offroad until suspect finds a road");
-
                     }
-
-
-                    File.AppendAllText(@"" + DangerousIndividuals.debugpath, "\n - 5 ");
-
-                    //Generate destination
-                    //If the true offroad maneuver is allowed, do it
-                    if (maneuver == 4194304)
+                    
+                    switch (Goal)
                     {
-                        File.AppendAllText(@"" + DangerousIndividuals.debugpath, "\n - 5.1 ");
+                        case DriveMode.ROAD:
+                            {
+                                WanderTimeRef = Game.GameTime + 15000;
 
-                        Vector3 pos = Criminal.Position + ((Criminal.ForwardVector * Util.RandomInt(50, 200)) + (Criminal.RightVector * Util.RandomInt(-40, 40)));
-                        DesiredDestination = Util.GenerateSpawnPos(pos, Util.Nodetype.LocalPathing, false);
+                                CopUnitHandler d = DangerousIndividuals.GetClosestCop(this, true, false);
+                                if (d == null)
+                                {
+                                    Function.Call(Hash.TASK_VEHICLE_MISSION_PED_TARGET, Criminal, VehicleChosen, Game.Player.Character, 8, 200f, DrivingStyle, 1f, 20f, true);
+                                }
+                                else
+                                {
+                                    Function.Call(Hash.TASK_VEHICLE_MISSION_PED_TARGET, Criminal, VehicleChosen, d.Leader, 8, 200f, DrivingStyle, 1f, 20f, true);
 
-                        if (DesiredDestination == Vector3.Zero) Util.GenerateSpawnPos(Criminal.Position + ((Criminal.ForwardVector * Util.RandomInt(50, 100))), Util.Nodetype.AnyRoad, false);
+                                }
+                                break;
+                            }
+                        case DriveMode.ALLEY:
+                        case DriveMode.DIRTROAD:
+                            {
+                                Vector3 temp = Util.GenerateSpawnPos(Criminal.Position + (Criminal.ForwardVector * Util.RandomInt(50, 200)), Util.Nodetype.Offroad, false);
+                                if(Util.RoadTravelDistance(Criminal.Position, temp)<200f && VehicleChosen.Model.GetDimensions().Y<4f) //if (Util.RoadTravelDistance(Criminal.Position, temp) < 59900f)
+                                {
+                                    DesiredDestination = temp;
+                                    Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE, Criminal, VehicleChosen, DesiredDestination.X, DesiredDestination.Y, DesiredDestination.Z, 200f, DrivingStyle + 262144, 10f);
+
+                                    // Criminal.Task.DriveTo(VehicleChosen, DesiredDestination, 10f, 200f, DrivingStyle + 262144);
+                                }
+                                else
+                                {
+                                    WanderTimeRef = Game.GameTime + 5000;
+
+                                    Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER, Criminal, VehicleChosen, 200f, DrivingStyle);
+                                }
+                                break;
+                            }
+                        case DriveMode.LOCAL_PATHING:
+                        case DriveMode.OFFROAD:
+                            {
+                                Vector3 pos = Criminal.Position + ((Criminal.ForwardVector * Util.RandomInt(50, 150)) + (Criminal.RightVector * Util.RandomInt(-40, 40)));
+                                //DesiredDestination = Util.GenerateSpawnPos(pos, Util.Nodetype.LocalPathing, false);
+
+                                DesiredDestination= Util.GenerateSpawnPos(pos, Util.Nodetype.Offroad, false);
+
+                                if (Util.RoadTravelDistance(Criminal.Position, DesiredDestination) < 200f) //if (Util.RoadTravelDistance(Criminal.Position, temp) < 59900f)
+                                {
+                                    Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE, Criminal, VehicleChosen, DesiredDestination.X, DesiredDestination.Y, DesiredDestination.Z, 200f, DrivingStyle + 4194304, 10f);
+                                }
+                                else
+                                {
+                                    WanderTimeRef = Game.GameTime + 5000;
+
+                                    Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER, Criminal, VehicleChosen, 200f, DrivingStyle);
+                                }
+
+                                //Criminal.Task.DriveTo(VehicleChosen, DesiredDestination, 10f, 200f, DrivingStyle + 4194304);
+                                break;
+                            }
+
                     }
-                    else if (maneuver == 262144) //if the dirtroad is allowed, do it
-                    {
-                        File.AppendAllText(@"" + DangerousIndividuals.debugpath, "\n - 5.2 ");
-
-                        Vector3 temp = Util.GenerateSpawnPos(Criminal.Position + (Criminal.ForwardVector * Util.RandomInt(50, 200)), Util.Nodetype.Offroad, false);
-
-                        if (Util.RoadTravelDistance(Criminal.Position, temp) < 300f) DesiredDestination = temp;
-                        
-                    }
-                    else if(1==0) //If nothing offroad allowed go on normal road;
-                    {
-                        File.AppendAllText(@"" + DangerousIndividuals.debugpath, "\n - 5.3 ");
-
-                        DesiredDestination = Util.GenerateSpawnPos(Criminal.Position + (Criminal.ForwardVector * Util.RandomInt(200, 400)), Util.Nodetype.Road, false);
-                    }
-
-
-                    File.AppendAllText(@"" + DangerousIndividuals.debugpath, "\n - 6 ");
-
-                    //Allow going against traffic && ignore peds (only if local pathing is off), based on DesperateBehavior
-                    if (maneuver == 0 && DesperateBehavior > Game.GameTime) maneuver = 512 - 16;
-
-
-
-                    if(DesiredDestination== Vector3.Zero)
-                    {
-                        File.AppendAllText(@"" + DangerousIndividuals.debugpath, "\n - 6.1 ");
-
-                        WanderTimeRef = Game.GameTime + 5000;
-                        Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER, Criminal, VehicleChosen, 200f, DrivingStyle);
-                        if (DangerousIndividuals.DebugNotifications.Checked) UI.Notify("Suspect will wander for some time");
-
-
-                    }
-                    else
-                    {
-
-                        if(maneuver==0) WanderTimeRef = Game.GameTime + 5000;
-
-                        File.AppendAllText(@"" + DangerousIndividuals.debugpath, "\n - 6.2 ");
-
-                        Criminal.Task.DriveTo(VehicleChosen, DesiredDestination, 10f, 200f, DrivingStyle + maneuver);
-
-                    }
-                    File.AppendAllText(@"" + DangerousIndividuals.debugpath, "\n - 7 ");
-
+                  //  UI.Notify(Goal.ToString());
                 }
             }
             else //If its driving and far from destination
@@ -942,6 +1063,7 @@ namespace LSPDispatch
 
                 if (AbilityRefTime < Game.GameTime)
                 {
+                    bool Done = false;
 
                     //Try to unstuck
                     if (VehicleStuck > 6 && Util.ForwardSpeed(VehicleChosen)<0.5f)
@@ -957,77 +1079,85 @@ namespace LSPDispatch
 
                         int side = 3; //14 which is right or 13 which is left or 3 which is only reverse
 
-                        AbilityRefTime = Game.GameTime + 10000;
+
+                        Vector3 p = VehicleChosen.Position + (VehicleChosen.ForwardVector * -20f);
+                        AbilityRefTime = Game.GameTime + 3000;
                         TaskSequence RamSequence = new TaskSequence();
-                        Function.Call(Hash.TASK_VEHICLE_TEMP_ACTION, 0, VehicleChosen, side, 2000);
-                        if (DesiredDestination == Vector3.Zero) DesiredDestination = VehicleChosen.Position + (VehicleChosen.ForwardVector * 5);
-                        Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE, 0, VehicleChosen, DesiredDestination.X, DesiredDestination.Y, DesiredDestination.Z, 200f, DrivingStyle, 10f);
+                        //Function.Call(Hash.TASK_VEHICLE_TEMP_ACTION, 0, VehicleChosen, side, 2000);
+                        //if (DesiredDestination == Vector3.Zero) DesiredDestination = VehicleChosen.Position + (VehicleChosen.ForwardVector * 5);
+                        Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE, 0, VehicleChosen, p.X, p.Y, p.Z, 200f, DrivingStyle+1024, 10f);
                         RamSequence.Close();
                         Criminal.Task.PerformSequence(RamSequence);
+                        Done = true;
                     }
 
-
-                    //Ramming
-                    if (Util.ForwardSpeed(VehicleChosen) > 15f) //Flags.Contains(CriminalFlags.CAN_RAM) && 
+                    //Front ram
+                    if (!Done && VehicleChosen.Speed > 5f)
                     {
-                        Vehicle Target = Util.GetVehicleAtSide(VehicleChosen, Util.Side.Left);
-                        int side = 7;
-                        if (!Util.CanWeUse(Target))
+                        Vehicle victim = Util.GetVehicleInDirection(VehicleChosen, (VehicleChosen.ForwardVector * 50), (VehicleChosen.Model.GetDimensions().Y / 2) + 3);
+                        if (Util.CanWeUse(victim) && (Util.IsPoliceVehicle(victim)))
                         {
-                            Target = Util.GetVehicleAtSide(VehicleChosen, Util.Side.Right);
-                            side = 8;
+                            //   UI.Notify(VehicleChosen.FriendlyName + " brakechecks");
+                            Function.Call(Hash.TASK_VEHICLE_TEMP_ACTION, Criminal, VehicleChosen, 32, 600); //6 handbrake
+                            AbilityRefTime = Game.GameTime + (Util.RandomInt(5, 10) * 1000);
                         }
-                        if (Util.CanWeUse(Target) && (Target.IsPersistent || (Util.CanWeUse(Game.Player.Character.CurrentVehicle) && Target==Game.Player.Character.CurrentVehicle)))
+                    }
+                    //Ramming
+                    if (VehicleChosen.Speed > 15f) //Flags.Contains(CriminalFlags.CAN_RAM) && 
+                    {
+                        if (!Done)
                         {
-                            //If vehicles are at similar speed and our vehicle is bigger than the target
-                            //Math.Abs(Util.ForwardSpeed(VehicleChosen) - Util.ForwardSpeed(Target)
-                            if (Util.AreVehsGoingAtSimilarSpeeds(Target,VehicleChosen, 2) && Util.IsBiggerThan(VehicleChosen,Target,-2f))
+                            Vehicle Target = Util.GetVehicleAtSide(VehicleChosen, Util.Side.Left);
+                            int side = 11; //7
+                            if (!Util.CanWeUse(Target))
                             {
-                                if (DangerousIndividuals.DebugNotifications.Checked) UI.Notify(VehicleChosen.FriendlyName + " rams");
+                                Target = Util.GetVehicleAtSide(VehicleChosen, Util.Side.Right);
+                                side = 10; //8
+                            }
+                            if (Util.CanWeUse(Target) &&  (Util.IsPoliceVehicle(Target)))
+                            {
+                                //If vehicles are at similar speed and our vehicle is bigger than the target
+                                //Math.Abs(Util.ForwardSpeed(VehicleChosen) - Util.ForwardSpeed(Target)
+                                if (Util.AreVehsGoingAtSimilarSpeeds(Target, VehicleChosen, 7f))// && Util.IsBiggerThan(VehicleChosen, Target, -2f))
+                                {
+                                    if (DangerousIndividuals.DebugNotifications.Checked)         UI.Notify(VehicleChosen.FriendlyName + " rams");
+                                //    Vector3 p = VehicleChosen.Position + (VehicleChosen.ForwardVector * 40f) + VehicleChosen.RightVector * (5 * side);
+                                    AbilityRefTime = Game.GameTime + (Util.RandomInt(5, 20)*1000);
 
-                                AbilityRefTime = Game.GameTime + 4000;
-                                TaskSequence RamSequence = new TaskSequence();
-                                Function.Call(Hash.TASK_VEHICLE_TEMP_ACTION, 0, VehicleChosen, side, 700);
-                                if (DesiredDestination == Vector3.Zero) DesiredDestination = VehicleChosen.Position + (VehicleChosen.ForwardVector * 5);
-                                Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE, 0, VehicleChosen, DesiredDestination.X, DesiredDestination.Y, DesiredDestination.Z, 200f, DrivingStyle, 10f);
-                                RamSequence.Close();
-                                Criminal.Task.PerformSequence(RamSequence);
+                                    Function.Call(Hash.TASK_VEHICLE_TEMP_ACTION, Criminal, VehicleChosen, side, Util.RandomInt(3, 8)*100);
+
+                                    //TaskSequence RamSequence = new TaskSequence();
+                                    //if (DesiredDestination == Vector3.Zero) DesiredDestination = VehicleChosen.Position + (VehicleChosen.ForwardVector * 5);
+                                    //Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE, 0, VehicleChosen, p.X, p.Y, p.Z, 200f, 16777216, 10f);
+                                    //  RamSequence.Close();
+                                    //Criminal.Task.PerformSequence(RamSequence);
+
+                                    Done = true;
+                                }
                             }
                         }
+                        if (!Done && Util.RandomInt(0, 10) < 5 && (!Util.IsSliding(VehicleChosen, 0.4f)))
+                        {
+                           // UI.Notify(VehicleChosen.FriendlyName + " Checks");
+
+                            Vehicle victim = Util.GetVehicleInDirection(VehicleChosen, (VehicleChosen.ForwardVector * -50),(VehicleChosen.Model.GetDimensions().Y/2)+3);
+                            if (Util.CanWeUse(victim) && (Util.IsPoliceVehicle(victim)) && Util.AreVehsGoingAtSimilarSpeeds(VehicleChosen, victim, 4f))
+                            {
+                             //   UI.Notify(VehicleChosen.FriendlyName + " brakechecks");
+                                Function.Call(Hash.TASK_VEHICLE_TEMP_ACTION, Criminal, VehicleChosen, 27, 600); //6 handbrake
+                                AbilityRefTime = Game.GameTime + (Util.RandomInt(2, 6) * 1000);
+                            }
+                        }
+
+
                     }
+
+
+                    //Brakecheck
+                    
                 }
 
-
-
-
-
-                /*
-                //AGGRESIDE DRIVING
-                if (!IsBrakeChecking && !IsRamming && VehicleChosen.Speed > 20f)
-                {
-                    int Prob = Util.RandomInt(0, 10);
-                    Vehicle Target = Util.GetVehicleTotheSideOfThatVehicle(VehicleChosen, 15f);
-                    if (Prob < 10 && Flags.Contains(CriminalFlags.CAN_RAM) && Util.CanWeUse(Target) && Target.IsPersistent && Util.AreVehsGoingAtSimilarSpeeds(VehicleChosen, Target, 10f))
-                    {
-                        Util.DrawLine(VehicleChosen.Position, Util.GetVehicleTotheSideOfThatVehicle(VehicleChosen, 40f).Position);
-                        if (DangerousIndividuals.DebugNotifications.Checked) UI.Notify("IsRamming");
-                        Function.Call(Hash.TASK_VEHICLE_ESCORT, Criminal, VehicleChosen, Target, 0, 90.0, 16777216, 1f, 1f, 30f);
-                        IsRamming = true;
-                        RamSpeed = VehicleChosen.Speed;
-                        return;
-                    }
-                    Target = Util.GetVehicleBehindThatVehicle(VehicleChosen, 15f);
-                    if (Prob < 2 && Flags.Contains(CriminalFlags.CAN_BRAKECHECK) && Util.CanWeUse(Target) && Target.IsPersistent && Util.AreVehsGoingAtSimilarSpeeds(VehicleChosen,Target,10f))
-                    {
-                        Util.DrawLine(VehicleChosen.Position, Util.GetVehicleBehindThatVehicle(VehicleChosen, 40f).Position);
-                        if (DangerousIndividuals.DebugNotifications.Checked) UI.Notify("IsBrakeChecking");
-                        Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER, Criminal, VehicleChosen, 2f, DrivingStyle);
-                        IsBrakeChecking = true;
-                        RamSpeed = VehicleChosen.Speed;
-                        return;
-                    }
-                }
-                */
+                
                 File.AppendAllText(@"" + DangerousIndividuals.debugpath, "\n - finished?");
 
             }
